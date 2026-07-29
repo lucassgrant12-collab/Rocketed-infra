@@ -1,4 +1,5 @@
 import { OnboardingCard } from "@/components/OnboardingCard";
+import { GetExtensionCard } from "@/components/GetExtensionCard";
 
 const STEPS = [
   {
@@ -69,8 +70,9 @@ export default function Home() {
             </ul>
           </div>
 
-          <div className="flex justify-center lg:justify-end">
+          <div className="flex flex-col items-center gap-6 lg:items-end">
             <OnboardingCard />
+            <GetExtensionCard />
           </div>
         </div>
       </main>

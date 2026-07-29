@@ -147,4 +147,81 @@ projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "atlus-pay-placeh
 
 ---
 
+## Slide 11 — "Checkout without asking the merchant for anything"
+
+**Talking points**
+- Original design required merchants to embed a JS snippet before their customers could pay with Atlus — the same adoption bottleneck every "accept crypto" plugin hits: no merchants, no users; no users, no merchants.
+- New model: Atlus Pay ships as a browser extension the *user* installs. It detects the checkout form itself and injects the button — no merchant integration, ever. Same distribution shape as Honey or a password manager's autofill.
+- Underlying payment mechanics (swap → lock → fiat leg → reveal → settle) don't change — this pivot is only about how the button gets in front of the user.
+
+**Code piece 1 — detecting a checkout form without any merchant cooperation**
+```js
+const CARD_NUMBER_SELECTORS = [
+  'input[autocomplete="cc-number"]',
+  'input[name*="cardnumber" i]',
+  'input[name*="card-number" i]',
+  'input[id*="cardnumber" i]',
+  'input[name*="cc-number" i]',
+];
+
+function findField(selectors) {
+  for (const selector of selectors) {
+    const el = document.querySelector(selector);
+    if (el) return el;
+  }
+  return null;
+}
+```
+
+**Code piece 2 — filling a field the way a real keystroke would**
+```js
+// Broken idea: field.value = cardNumber — silently ignored by any
+// checkout form built with React/Vue, because they track input through
+// the framework's own state, not the raw DOM value.
+
+// Working version: go through the native setter first, then dispatch
+// the events the framework is actually listening for.
+function setNativeValue(field, value) {
+  const prototype = Object.getPrototypeOf(field);
+  const nativeSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  nativeSetter ? nativeSetter.call(field, value) : (field.value = value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.dispatchEvent(new Event("change", { bubbles: true }));
+}
+```
+
+**How they connect:** piece 1 finds the field, piece 2 is what makes filling it actually work on a real, modern checkout page instead of only on a plain static HTML form. Skipping piece 2 would have made the whole extension look broken on exactly the kind of checkout pages (React/Vue-based) that matter most.
+
+---
+
+## Slide 12 — "One click, one payment: proving the message-passing doesn't double-fire"
+
+**Talking points**
+- The extension has three separate scripts (content script, service worker, popup) all talking to each other asynchronously — the kind of system where a bug shows up as "the user got charged twice," not a stack trace.
+- No real coordinator exists yet, so this was tested against a throwaway mock server implementing the same two-endpoint hashlock shape (`/api/pay` → `/api/reveal`) the real one will use, driven by a real loaded copy of the extension via Playwright — not just code review.
+- First-ever run showed two `/api/pay` calls for one click. Instead of assuming it was fine and moving on, added instrumentation and reran with a clean profile.
+
+**Code piece 1 — the instrumentation that isolated it**
+```js
+const SW_INSTANCE_ID = Math.random().toString(36).slice(2, 8);
+console.log("[bg]", SW_INSTANCE_ID, "service worker (re)started");
+
+chrome.runtime.onMessage.addListener((message, sender) => {
+  console.log("[bg]", SW_INSTANCE_ID, "received", message.action, JSON.stringify(message));
+  // ...
+});
+```
+
+**Code piece 2 — what it proved**
+```
+Run 1 (first-ever load):  order_1 {amount only}  -> order_2 {full body}   -- 2 calls
+Run 2 (fresh profile):    order_2 {full body}                            -- 1 call
+Run 3 (fresh profile):    order_3 {full body}                            -- 1 call
+Run 4 (fresh profile):    order_4 {full body}                            -- 1 call
+```
+
+**How they connect:** the instrumentation didn't just confirm "it works" — it proved *which* layer the bug lived in. A single service-worker instance ID appearing exactly once per confirmed run, across three clean repeats, rules out the message-passing logic as the cause and points at a one-off Chrome extension first-install lifecycle quirk instead (the very first activation of a never-before-seen extension ID double-firing lifecycle events). Debug logging was removed once the conclusion was reached — it was a diagnostic, not a shipped feature.
+
+---
+
 <!-- Next slides: replace placeholder code sections above with real code once written. First real code slide should be the escrow contract's proof-verification function, since Slide 5/RESEARCH.md flags it as the highest-risk piece to get right. -->

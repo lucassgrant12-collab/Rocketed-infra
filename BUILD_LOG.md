@@ -79,6 +79,37 @@ Same underlying `injected()` wagmi connector path is used for MetaMask, Rainbow,
 - Same framing corrected in [RESEARCH.md](RESEARCH.md#2026-07-29--pivot-atlus-treasury-model-v1) and earlier entries in this file: "simulated fiat rails / testnet" is accurately described as the **current development stage** (sandboxes are what you use before real money is on the line, not a permanent ceiling on scope), not as "this is just a school assignment so it doesn't need to be real."
 - Practical effect on future work: don't undersell scope or add disclaimers implying this won't handle real funds — money transmission, custody, and the regulatory risk map in RESEARCH.md's Risks section are live concerns for an eventual real deployment, not hypotheticals for an assignment writeup. The Sepolia-testnet / Stripe-sandbox choices stay as-is for now (still the right dev-stage tools), just without a copy line editorializing them as the endpoint.
 
+## 2026-07-29 — Browser extension built: checkout via extension, not merchant snippet
+
+Checkout moves from "merchant embeds a JS snippet" to "user installs a Chrome extension that detects any checkout form itself." Full reasoning in [RESEARCH.md](RESEARCH.md#2026-07-29--pivot-checkout-moves-from-a-merchant-js-snippet-to-a-browser-extension).
+
+### Built — `extension/` (Manifest V3)
+
+- [manifest.json](extension/manifest.json) — `activeTab`, `scripting`, `storage` permissions; `host_permissions: ["<all_urls>"]`; two content scripts — `content.js` on `<all_urls>` (checkout detection) and `wallet-bridge.js` scoped to `http://localhost:3000/*` only (the Atlus site itself, update once there's a production domain).
+- [content.js](extension/content.js) — scans for card-number fields via a list of `autocomplete`/`name`/`id` patterns, injects the "Pay with Atlus" button beside the first match, and keeps a `MutationObserver` running for SPA checkouts that render the form after initial load. Fills card fields through the page framework's native setter (not a plain `.value =`) so React/Vue-controlled inputs actually pick up the change.
+- [background.js](extension/background.js) — service worker message hub. `initiatePayment` (from content.js) opens a centered `chrome.windows.create` popup; `confirmPayment` (from popup.js) drives the two-step coordinator call — `POST /api/pay` (returns `orderId`/`secret`), a 200ms simulated settlement delay, then `POST /api/reveal` (returns the virtual card) — and relays the result to the originating tab as a `fillCard` message and to the popup as `paymentSucceeded`/`paymentFailed`. Payment state is transaction-scoped and kept in memory; the wallet address is the one thing persisted to `chrome.storage.local`, since it needs to outlive any single payment and survive service-worker restarts.
+- [popup.html](extension/popup.html) / [popup.js](extension/popup.js) — standalone confirm/cancel window (not the toolbar default popup), shows the detected amount or a manual-entry fallback if detection failed.
+- [wallet-bridge.js](extension/wallet-bridge.js) — new piece, not in the original spec: relays the connected wallet address from the website into the extension.
+- [test/checkout.html](extension/test/checkout.html) — dummy checkout page (card number/expiry/CVV fields with correct `autocomplete` attributes, a `.order-total` total) for manual and automated testing.
+- [README.md](extension/README.md) — dev-mode load steps and how to test against the dummy checkout page, as requested.
+
+### Website changes — wallet sync + install path
+
+- [web/components/WalletBridge.tsx](web/components/WalletBridge.tsx) — mounted once in `app/providers.tsx`, watches `useAccount()` and `window.postMessage`s `WALLET_CONNECTED`/`WALLET_DISCONNECTED` to `wallet-bridge.js` whenever connection state changes, site-wide (not scoped to the onboarding card's lifecycle).
+- [web/components/GetExtensionCard.tsx](web/components/GetExtensionCard.tsx) — a "Get Extension" button that expands into numbered install steps and a link to the `extension/` folder on GitHub. No Chrome Web Store listing exists yet, so this links to the real repo folder rather than a fabricated store URL — says so explicitly in the UI. Stacked below the onboarding card in `app/page.tsx`.
+
+### Verification
+
+No real coordinator exists yet (the spec explicitly says not to build one), so verified with a temporary mock coordinator (plain Node `http` server, not committed — implements `/api/pay`/`/api/reveal` exactly as specified) and Playwright's `launchPersistentContext` with `--load-extension` pointed at `extension/`, driving the real extension against `test/checkout.html`: button injection → click → popup opens showing the detected `$49.99` → Confirm → coordinator round trip → card fields (`4242424242424242`, `12/29`, `123`) filled on the checkout page. Confirmed end-to-end on 4 separate runs.
+
+**One real bug surfaced and investigated, not just brushed past:** the very first run ever (this extension's first-ever registration in a fresh Chrome install on this machine) showed *two* `/api/pay` calls for one click — one with the correct body, one missing `merchant`/`walletAddress` entirely. Added temporary instrumentation (a random per-load service-worker instance ID logged on every message) and reran with a wiped profile three more times: every subsequent run showed exactly one `/api/pay` + one `/api/reveal`, both tagged with the same single service-worker instance ID. Conclusion: a one-off Chrome extension first-install lifecycle quirk (not uncommon — the very first activation of a never-before-seen extension ID can double-fire lifecycle events), not a bug in the message-passing logic itself. Debug instrumentation removed before shipping.
+
+### Still open before this is real
+
+- No real coordinator — `background.js` points at `http://localhost:3000/api/pay` / `/api/reveal`, currently unimplemented outside the throwaway test mock.
+- `wallet-bridge.js`'s content script match pattern is hardcoded to `http://localhost:3000/*` — needs updating once the site has a production domain.
+- Not published to the Chrome Web Store — `GetExtensionCard` install steps are for developer-mode "Load unpacked" only.
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):

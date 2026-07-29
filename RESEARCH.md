@@ -127,3 +127,24 @@ The independent Payer Node network moves from "v1 requirement" to "v2/future sca
 ### Tension to flag: this changes the non-custodial claim for v1
 
 The original pitch was "Atlus never touches funds — escrow releases directly to independent Payer Nodes." Under the Treasury Model, Atlus's own wallet is the one collecting and holding user-originated USDT (until it off-ramps, on its own schedule) — that *is* custody of converted funds, even briefly. This doesn't break the non-custodial framing for the **User Vault** (the user still holds their own crypto until the moment of payment and explicitly authorizes the conversion), but it does mean the **protocol** is custodial of the stablecoin leg for v1, unlike the original "Payer Node fronts its own capital" model. Worth being precise in the writeup/slides: "non-custodial wallet" and "non-custodial protocol" are different claims, and v1 only supports the first.
+
+---
+
+## 2026-07-29 — Pivot: checkout moves from a merchant JS snippet to a browser extension
+
+### What changed
+
+Step 1 of the original flow ("merchant site embeds the Atlus Pay JS snippet") required **merchant cooperation** — every store had to integrate before a user could pay with Atlus there. That's the same adoption bottleneck every "accept crypto" plugin has always hit: you need merchants to sign up before users can use it, and users won't show up until merchants have.
+
+The new model removes that requirement entirely. **Atlus Pay ships as a Chrome extension the user installs.** The extension itself detects the checkout form on whatever page the user is already on (matching common `cc-number` / `cc-exp` / `cc-csc` autocomplete attributes and name/id patterns) and injects the "Pay with Atlus" button directly — no merchant integration, no snippet, works on any checkout that has a standard card form. This is the same distribution model as Honey, Capital One Shopping, or a password manager's autofill: the leverage point is the user's browser, not the merchant's codebase.
+
+### Updated architecture
+
+- **content.js** — runs on every page, scans for a card-number field, injects the button next to it, and later fills that same field (plus expiry/CVV) once a virtual card comes back. Uses a native-setter + dispatched `input`/`change` event trick to fill fields correctly even on React/Vue-controlled checkout forms that ignore a plain `.value =` assignment.
+- **background.js (service worker)** — the new name for the coordination role previously described as "Atlus relayer" / "Atlus Protocol Core." Talks to a **coordinator server** that mirrors the hashlock/HTLC shape already designed in the escrow-proof section above: `POST /api/pay` opens an order and returns a hash + secret, `POST /api/reveal` (after a simulated on-chain-settlement delay) returns the virtual card. This is a genuine simplification of that earlier design for the extension MVP — the mock coordinator hands back the secret directly instead of it being revealed by a real on-chain transaction — but the shape (lock → reveal → card) is the same primitive the real system is meant to use, so this is a legitimate stepping stone, not a divergent design.
+- **popup.html/popup.js** — the Apple-Pay-style confirmation popup from the original flow, now literally a `chrome.windows.create` popup window instead of an in-page modal.
+- **wallet-bridge.js** — new. A content script scoped only to the Atlus Pay website (not merchant pages) that relays the connected wallet address from the site into the extension via `chrome.storage.local`, so a payment started from the extension can carry a wallet address without asking the user to reconnect inside the extension itself.
+
+### What this doesn't change
+
+The underlying payment mechanics (swap → lock → fiat leg → reveal → settle) and the open questions already logged above (authorization-vs-settlement timing, who verifies the proof, the v1 custodial tension) are unaffected — this pivot is about **how the button gets in front of the user**, not about who holds funds or how proof-of-payment works. Those still need to be wired into the real coordinator when it moves past the mock `/api/pay` / `/api/reveal` stand-in.
