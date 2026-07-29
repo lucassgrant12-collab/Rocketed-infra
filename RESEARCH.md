@@ -83,7 +83,7 @@ This should be decided explicitly, not left implicit — it's the difference bet
 
 ## Risks & regulatory analysis
 
-Not legal advice — this is a design-level risk map for a school project, flagging where a real deployment would need actual legal review, not a substitute for it.
+Not legal advice — this is a design-level risk map, flagging where a real deployment needs actual legal review before real funds move through it, not a substitute for that review.
 
 - **Money transmission** — Atlus itself likely avoids money-transmitter licensing because it never custodies funds. Payer Nodes, who front fiat and receive crypto, may individually trigger MTL/MSB registration requirements depending on jurisdiction — "each Payer Node handles its own compliance" is an architectural choice, not a guarantee that compliance is simple or automatic for them.
 - **Card issuer / network risk** — one-time virtual cards issued instantly for high-value, single-use transactions can resemble card-testing or fraud patterns to issuer risk models. Payer Nodes need issuer relationships that explicitly tolerate this usage pattern, or authorizations will get declined in practice.
@@ -108,7 +108,7 @@ Not legal advice — this is a design-level risk map for a school project, flagg
 
 ### What changed
 
-The independent Payer Node network moves from "v1 requirement" to "v2/future scaling step." For v1, **Atlus itself is the sole payer node**: it converts the user's crypto to a stablecoin, takes a fee, and pays the merchant directly from its own fiat balance via a virtual card API. Fiat rails are simulated through the Stripe Issuing sandbox for this project — no real money moves, appropriate for a Year 11 AIF assignment rather than a live financial product.
+The independent Payer Node network moves from "v1 requirement" to "v2/future scaling step." For v1, **Atlus itself is the sole payer node**: it converts the user's crypto to a stablecoin, takes a fee, and pays the merchant directly from its own fiat balance via a virtual card API. Fiat rails are simulated through the Stripe Issuing sandbox during development — no real money moves yet. This is a development-stage choice, not the ceiling: Atlus Pay is a real project intended to eventually move real funds. (It also happens to double as the project owner's Year 11 AIF submission — that's incidental to the build, not the reason for it.)
 
 ### Updated flow (v1, Treasury Model)
 

@@ -1,6 +1,6 @@
 # Slides
 
-Presentation deck for Atlus Pay (Year 11 AIF project). Each slide is numbered and self-contained. See [BUILD_LOG.md](BUILD_LOG.md#slide-format-convention-reference) for the format convention this follows.
+Presentation deck for Atlus Pay. Each slide is numbered and self-contained. See [BUILD_LOG.md](BUILD_LOG.md#slide-format-convention-reference) for the format convention this follows.
 
 Slides get filled in with real code as the system is built — the code slides below are placeholders until then. When something breaks and gets fixed, both versions go on the slide (broken → what changed → working), not just the final answer.
 

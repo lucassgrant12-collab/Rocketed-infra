@@ -74,12 +74,6 @@ export default function Home() {
           </div>
         </div>
       </main>
-
-      <footer className="border-t border-neutral-200/70 py-6 dark:border-neutral-800">
-        <p className="text-center text-xs text-neutral-400 dark:text-neutral-600">
-          Atlus Pay — a Year 11 AIF project. Testnet only, no real funds.
-        </p>
-      </footer>
     </div>
   );
 }

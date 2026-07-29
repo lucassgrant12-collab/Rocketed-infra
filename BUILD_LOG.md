@@ -19,14 +19,14 @@ Convention: one entry per work session, newest at the bottom, dated. Log decisio
 
 - Project renamed from "Atlas Pay" to "Atlus Pay" throughout all docs.
 - v1 architecture revised: Atlus itself acts as the sole payer node (the "Treasury Model") — converts user crypto to USDT, takes a fee spread, pays merchants directly via a Stripe Issuing sandbox virtual card, retains the USDT as profit, off-ramps later. The independent Payer Node Network is now a v2/future scaling step, not a v1 requirement. Full detail and the non-custodial-claim tension this introduces are logged in [RESEARCH.md](RESEARCH.md#2026-07-29--pivot-atlus-treasury-model-v1).
-- Fiat rails are simulated (Stripe Issuing sandbox) for this project — no real money moves.
+- Fiat rails are simulated (Stripe Issuing sandbox) during development — no real money moves yet, but that's a dev-stage choice, not a scope limit. See the 2026-07-29 "Reframe" entry below.
 - Starting implementation: website onboarding (email capture + wallet connect), a `.env` for secrets, and Supabase SQL migrations for the onboarding data. Onboarding is now email capture + wallet connect (supersedes the earlier "username + wallet connect" decision — email doubles as the capture field and the confirmation channel).
 
 ## 2026-07-29 — Onboarding v1 built: email capture + wallet connect
 
 - Scaffolded `web/` — Next.js (App Router, TypeScript, Tailwind), via `create-next-app`.
 - Installed `wagmi` + `viem` + `@rainbow-me/rainbowkit` + `@tanstack/react-query` for wallet connect, `@supabase/supabase-js` for the backend.
-- [web/lib/wagmi.ts](web/lib/wagmi.ts) — wagmi config via RainbowKit's `getDefaultConfig`, targeting Sepolia testnet (no real funds — matches the "fiat rails simulated" project scope).
+- [web/lib/wagmi.ts](web/lib/wagmi.ts) — wagmi config via RainbowKit's `getDefaultConfig`, targeting Sepolia testnet (current dev-stage network, not a permanent no-real-funds constraint).
 - [web/app/providers.tsx](web/app/providers.tsx) — wraps the app in `WagmiProvider` / `QueryClientProvider` / `RainbowKitProvider`; wired into [web/app/layout.tsx](web/app/layout.tsx).
 - [web/app/page.tsx](web/app/page.tsx) — the onboarding flow: email field with basic format validation → RainbowKit `ConnectButton` → on connect, upserts `{ email, wallet_address }` into Supabase keyed on `wallet_address`, with saving/saved/error states shown inline.
 - [web/lib/supabaseClient.ts](web/lib/supabaseClient.ts) — Supabase client reading `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
@@ -69,9 +69,15 @@ Same underlying `injected()` wagmi connector path is used for MetaMask, Rainbow,
 ## 2026-07-29 — Landing page design pass
 
 - Extracted the stateful onboarding logic (email step + wallet connect + Supabase save) out of `app/page.tsx` into [web/components/OnboardingCard.tsx](web/components/OnboardingCard.tsx), styled as a white/dark card (rounded-2xl, soft shadow, ring) matching the polish of RainbowKit's own connect modal — same visual language, since that's the one piece of UI on the page already proven to look right.
-- `app/page.tsx` is now the marketing shell around that card: header with wordmark + a "Sepolia Testnet" badge (honest signal that this is a demo, not real funds), a two-column hero on desktop (headline/subtext/3-step "how it works" list next to the card, stacking to one column on mobile), and a one-line footer.
+- `app/page.tsx` is now the marketing shell around that card: header with wordmark + a "Sepolia Testnet" badge (current network, not a claim about the project's ambitions), a two-column hero on desktop (headline/subtext/3-step "how it works" list next to the card, stacking to one column on mobile).
 - Fixed a pre-existing bug in [web/app/globals.css](web/app/globals.css): `body` hardcoded `font-family: Arial`, silently overriding the Geist font that's loaded via `next/font` and exposed as `--font-sans` — the custom font was never actually rendering. Now reads `var(--font-sans)` first.
 - Verified: `npm run build` passes; screenshotted the page in light, dark, and mobile viewports via Playwright — all render correctly, card and hero both responsive. Re-ran the mock-wallet Playwright test from the previous entry against the new layout to confirm the connect flow still works unchanged after the restructure (it does — same `id="email"` and button text, so the DOM contract didn't shift).
+
+## 2026-07-29 — Reframe: this is a real project, not a school demo
+
+- The footer originally shipped with the design pass read "Atlus Pay — a Year 11 AIF project. Testnet only, no real funds." — user corrected this directly: Atlus Pay is a serious, real project intended to eventually move real funds; the Year 11 AIF submission rides on top of it, it isn't the point of it. Footer line removed from [web/app/page.tsx](web/app/page.tsx) entirely rather than reworded, since there was nothing else worth putting there.
+- Same framing corrected in [RESEARCH.md](RESEARCH.md#2026-07-29--pivot-atlus-treasury-model-v1) and earlier entries in this file: "simulated fiat rails / testnet" is accurately described as the **current development stage** (sandboxes are what you use before real money is on the line, not a permanent ceiling on scope), not as "this is just a school assignment so it doesn't need to be real."
+- Practical effect on future work: don't undersell scope or add disclaimers implying this won't handle real funds — money transmission, custody, and the regulatory risk map in RESEARCH.md's Risks section are live concerns for an eventual real deployment, not hypotheticals for an assignment writeup. The Sepolia-testnet / Stripe-sandbox choices stay as-is for now (still the right dev-stage tools), just without a copy line editorializing them as the endpoint.
 
 ### Slide format convention (reference)
 
