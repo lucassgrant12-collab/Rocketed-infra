@@ -1,4 +1,4 @@
-// content.js — Atlus Pay content script
+// content.js - Atlus Pay content script
 //
 // Runs on every page (see manifest.json). Detects a checkout form, injects
 // a "Pay with Atlus" button next to the card number field, and later fills

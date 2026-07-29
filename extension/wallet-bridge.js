@@ -1,8 +1,8 @@
-// wallet-bridge.js — bridges the connected wallet from the Atlus Pay
+// wallet-bridge.js - bridges the connected wallet from the Atlus Pay
 // website into the extension.
 //
 // Only runs on the Atlus Pay site itself (see manifest.json's
-// content_scripts "matches" — currently http://localhost:3000/* for local
+// content_scripts "matches" - currently http://localhost:3000/* for local
 // dev; update that to the production domain once one exists). It never
 // runs on merchant checkout pages, which use content.js instead.
 //
@@ -14,7 +14,7 @@
 // extension itself.
 
 window.addEventListener("message", (event) => {
-  // Only trust same-window, same-origin messages carrying our own marker —
+  // Only trust same-window, same-origin messages carrying our own marker.
   // window.postMessage is otherwise readable by anything injected on the
   // page, including other extensions or a compromised third-party script.
   if (event.source !== window) return;

@@ -4,7 +4,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  // Don't throw here — this module is imported at prerender time, and a hard
+  // Don't throw here - this module is imported at prerender time, and a hard
   // throw would break `next build` before .env.local is ever filled in.
   // Calls made with the placeholder client will fail at request time instead,
   // surfaced through the normal error handling in app/page.tsx.

@@ -1,115 +1,71 @@
 # Slides
 
-Presentation deck for Atlus Pay. Each slide is numbered and self-contained. See [BUILD_LOG.md](BUILD_LOG.md#slide-format-convention-reference) for the format convention this follows.
+Presentation deck for Atlus Pay. Each slide is numbered and self-contained. Every second slide carries real code pulled from the actual files in this repo, not illustrative pseudocode. See [BUILD_LOG.md](BUILD_LOG.md#slide-format-convention-reference) for the format convention this follows.
 
-Slides get filled in with real code as the system is built — the code slides below are placeholders until then. When something breaks and gets fixed, both versions go on the slide (broken → what changed → working), not just the final answer.
-
----
-
-## Slide 1 — "There's no 'connect wallet and pay anywhere' button"
-
-**Talking points**
-- Existing crypto payment options are custodial, require KYC, or force the merchant to accept crypto directly — none of that is what a normal checkout looks like.
-- A user sitting on gains in a volatile coin has to manually cash out, pay tax, and wait days before they can actually spend it.
-- Atlus Pay's premise: a non-custodial payment layer that works on *any* checkout, for *any* crypto, without the user or Atlus ever touching fiat directly. The merchant never even knows crypto was involved.
+When something breaks and gets fixed, both versions go on the slide (broken, then what changed, then working), not just the final answer.
 
 ---
 
-## Slide 2 — "Three components, none of which hold your money"
+## Slide 1 - "There's no 'connect wallet and pay anywhere' button"
 
 **Talking points**
-- **User Vault** — non-custodial smart-contract wallet (or connected EOA), secured by guardian recovery via Shamir secret sharing. The user controls it, not Atlus.
-- **Payer Node Network** — liquidity providers who stake capital and use their own fiat rails (virtual Visa cards, bank APIs) to pay merchants on the user's behalf, earning fees for doing so.
-- **Atlus Protocol Core** — off-chain coordination (relayer, double-entry ledger) plus on-chain escrow contracts that atomically hold stablecoins until proof of fiat payment is provided. Atlus itself never holds funds at any point.
-
-**How they connect:** the Vault initiates and signs, the Protocol Core coordinates and holds funds in escrow only transiently, and the Payer Node is the only party that ever touches fiat. Removing any one of the three breaks the "non-custodial" claim — e.g. without the Payer Node network, Atlus would have to touch fiat itself.
-
-**v1 note (2026-07-29):** for v1, Atlus *is* the sole Payer Node ("Treasury Model") — it converts crypto to USDT itself and pays merchants directly, keeping the spread as profit. The independent, third-party Payer Node Network described above is the v2 scaling step, not how v1 actually works. This means v1's protocol is custodial of the converted stablecoin, even though the User Vault stays non-custodial — see [RESEARCH.md](RESEARCH.md#tension-to-flag-this-changes-the-non-custodial-claim-for-v1) for why that distinction matters.
+- Existing crypto payment options are custodial, require KYC, or force the merchant to accept crypto directly. None of that is what a normal checkout looks like.
+- The first version of this idea required merchants to embed a JS snippet before their customers could pay with Atlus. That is the same adoption bottleneck every "accept crypto" plugin hits. No merchants, no users. No users, no merchants.
+- Current version: Atlus Pay ships as a browser extension the user installs. It detects the checkout form itself and injects the button. No merchant integration, ever.
 
 ---
 
-## Slide 3 — "The payment flow, step by step"
+## Slide 2 - "Three pieces, one extension"
 
 **Talking points**
-0. **Onboarding** — user enters a username, then connects their wallet. No separate KYC step at v1.
-1. **Checkout integration** — merchant embeds the Atlus Pay JS snippet; a "Pay with Atlus" button carries amount, currency, order ID.
-2. **Auth & authorization** — Apple-Pay-style popup shows the exact fiat amount and merchant; user authenticates via biometric/passkey. Atlus fetches a live price quote and the best DEX swap route.
-3. **Atomic swap & escrow lock** — one signed meta-transaction: approve crypto → swap to USDC via DEX aggregator → deposit into escrow. Submitted by an Atlus relayer, so the user needs no gas tokens.
+- **Website** (Next.js) handles onboarding: email, wallet connect, and getting the extension installed.
+- **Extension** (Manifest V3) is what the user actually interacts with at checkout. It detects the card form, opens a confirmation popup, and fills the card fields once payment completes.
+- **Coordinator** is the backend the extension talks to for the actual swap and card issuance. Currently mocked; the shape mirrors a hashlock.
+
+**Code piece 1, the extension's permission surface**
+```json
+{
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["content.js"] },
+    { "matches": ["http://localhost:3000/*"], "js": ["wallet-bridge.js"] }
+  ]
+}
+```
+
+**Code piece 2, the file layout that maps to those three pieces**
+```
+web/            the website (onboarding, legal pages, API routes)
+extension/      the browser extension (content.js, background.js, popup)
+supabase/       SQL migrations, run manually against the Supabase project
+```
+
+**How they connect:** `content.js` runs everywhere because it has to find a checkout form on any site. `wallet-bridge.js` is scoped to only the Atlus Pay website, because its entire job is reading the connected wallet off that one page, not merchant pages. The permission list is the extension's actual attack surface, worth checking first whenever something looks wrong.
 
 ---
 
-## Slide 4 — "The payment flow, continued: fronting the fiat"
+## Slide 3 - "Onboarding is three steps, in order"
 
 **Talking points**
-4. **Payer Node fronts the fiat** — sees USDC land in escrow, instantly issues a one-time virtual Visa card for the exact amount via its own card-issuing API. The Atlus snippet injects the card number into the merchant's checkout form. Target: under 2 seconds from tap to authorization.
-5. **Proof of payment & escrow release** — Payer Node submits proof (webhook, receipt, or transaction ID) to the escrow contract, which verifies it and releases the USDC.
-6. **Ledger finalization** — Atlus's off-chain double-entry ledger updates the user's balance and marks the obligation settled. User gets an **email confirmation**.
-
-**How they connect:** step 3's escrow lock is the precondition that makes step 4 safe for the Payer Node to act on — they only front real fiat because the USDC is already provably committed on-chain. Step 5 is what lets them recover it. Break the link between "escrow locked" and "Payer Node will act" and the whole under-2-second UX target falls apart.
+- Step 1: email. Step 2: connect a wallet. Step 3: get the extension, which only appears once a wallet is actually connected.
+- Gating step 3 behind a connected wallet is deliberate. Getting the extension before there's an account to attach it to is a dead end.
+- The same card component renders all three steps. There's no separate page navigation, just conditional rendering off two pieces of state (`emailConfirmed`, `isConnected`).
 
 ---
 
-## Slide 5 — "Proof of payment: the trust-critical piece"
+## Slide 4 - "One component, three steps, derived state"
 
 **Talking points**
-- Whoever decides "the merchant got paid" controls whether a Payer Node can drain escrow without actually paying anyone — this is the single biggest technical risk in the system.
-- **Naive approach (rejected):** Payer Node self-reports via API call. Nothing stops a false claim.
-- **Trusted-oracle approach:** card issuer webhook (Stripe Issuing / Marqeta) confirms settlement; an oracle attests to it on-chain. Moves trust from the Payer Node to the issuer + oracle.
-- **Multi-source cross-check:** several independent attestors pull card-network data and require consensus, instead of trusting one oracle.
-- **ZK approach:** a TLSNotary-style proof of the issuer's API response, verifiable without the issuer needing special integration.
-- **Unresolved nuance:** card *authorization* is instant, but *settlement* takes 1-3 days. Does escrow release on proof of authorization (Payer Node takes settlement risk) or proof of settlement (Payer Node waits days for their USDC)? This changes the fee economics and hasn't been decided yet.
+- The step number isn't stored in state. It's derived from what's already true, so there's no way for the UI to get out of sync with reality (e.g. showing "step 2" while a wallet is actually already connected).
 
----
+**Code piece 1, deriving the step instead of storing it**
+```tsx
+const step = !emailConfirmed ? 1 : !isConnected ? 2 : 3;
+```
 
-## Slide 6 — "Design properties that fall out of the architecture"
-
-**Talking points**
-- **Non-custodial** — Atlus never possesses user crypto or fiat; escrow is code-controlled, Payer Nodes front their own fiat.
-- **Volatility protection** — the instant swap at authorization means the payer only ever receives stablecoins.
-- **Privacy** — wallet addresses are never revealed to merchants or Payer Nodes; shipping/personal details are filled client-side, bypassing Atlus servers; blind signatures further decouple authorization from identity.
-- **Frictionless UX** — biometric confirmation, gasless meta-transactions, no manual swaps or on-chain waits.
-- **Privacy vs. compliance tension (be upfront about this, don't just claim the win):** hiding the wallet address from the Payer Node is in direct tension with that Payer Node's own transaction-monitoring obligations in most jurisdictions once real fiat rails are involved.
-
----
-
-## Slide 7 — "Who pays whom: the fee model"
-
-**Talking points**
-- **Payer Node fee** — the main user-facing cost: a spread for instantly fronting fiat, roughly analogous to a card processing fee or FX spread (indicative 1-3%, scaled by volatility/liquidity — not finalized).
-- **Atlus Protocol fee** — a cut of the Payer Node fee, or a flat per-transaction fee, for coordination (relayer/gas sponsorship, ledger, escrow infra).
-- **DEX/swap costs** — standard aggregator fee + slippage, paid by the user, not Atlus revenue.
-- **Payer Node staking** — capital bond posted by nodes to participate; not direct revenue, but the reason the trust model in Slide 5 is tolerable at all — a lying node has capital at risk.
-
----
-
-## Slide 8 — "Risks and regulatory shape (not legal advice)"
-
-**Talking points**
-- **Money transmission** — Atlus likely avoids MTL/MSB licensing by never custodying funds; Payer Nodes, who do touch fiat, may individually need it depending on jurisdiction.
-- **Card issuer risk** — instant, one-time, high-value virtual cards can look like fraud/card-testing to issuer risk models; needs issuer relationships that explicitly tolerate this pattern.
-- **Escrow oracle risk** — a compromised or colluding oracle could release USDC without the merchant ever being paid (see Slide 5).
-- **Payer Node insolvency** — a failed or disputed merchant charge leaves the node out real fiat with no immediate on-chain recourse; staking mitigates this but slashing conditions aren't defined yet.
-- **KYC / sanctions exposure** — non-custodial design doesn't remove KYC obligations from the system, it shifts them onto whichever Payer Node touches fiat rails.
-
----
-
-## Slide 9 — "What's already built vs. what's next"
-
-**Talking points**
-- **Already built (per project owner, not yet in this repo):** double-entry ledger, non-custodial vault with Shamir guardian recovery, RSA blind signature module, adapter pattern for Payer Node fiat rails.
-- **Not yet decided:** escrow proof-of-payment mechanism (authorization vs. settlement), fee percentages, Payer Node slashing conditions, KYC responsibility split.
-- **Immediate next step:** locate and import the existing tech stack pieces, then pick a build order — proof-of-payment mechanism first, since it's the piece the rest of the trust model depends on.
-
----
-
-## Slide 10 — "Onboarding, live: email capture + wallet connect"
-
-**Talking points**
-- First real piece of the system: the onboarding page. User enters an email, then connects a wallet via RainbowKit. On connect, the pair gets written to Supabase.
-- Built on Next.js + wagmi + RainbowKit for the wallet layer, Supabase for persistence — chosen because they're the current standard tools for this and integrate cleanly with each other.
-
-**Code piece 1 — what actually gets written to Supabase on connect**
-```ts
+**Code piece 2, saving once step 3 is reached**
+```tsx
 useEffect(() => {
   if (!emailConfirmed || !isConnected || !address) return;
 
@@ -131,30 +87,25 @@ useEffect(() => {
 }, [emailConfirmed, isConnected, address, email]);
 ```
 
-**Code piece 2 — the config that let the build even run**
-```ts
-// Broken: threw "No projectId found" during `next build`, before the
-// app ever touches WalletConnect — RainbowKit validates at config time.
-projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "",
-
-// Fixed: fall back to a non-empty placeholder so the build succeeds
-// with no env vars set. Real WalletConnect connections still need a
-// real project ID — this only unblocks the build/dev server.
-projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "atlus-pay-placeholder-project-id",
-```
-
-**How they connect:** piece 1 can't run at all unless the app builds and renders first — and piece 2 is exactly what was blocking that. The same failure mode hit the Supabase client too (it originally threw at import time if env vars were missing, which crashes prerendering, not just a runtime request) — fixed the same way, by deferring the failure from "app won't build" to "this specific Supabase call fails, and the UI already has an error state for that." The lesson: validate required config at the point of use, not at module load, or you can't ship a build before secrets exist.
+**How they connect:** the derived `step` decides what renders. The effect decides what gets saved, and it only fires once both conditions the derived step already checked are true. Two different mechanisms reading the same underlying state, which is why they can't drift apart.
 
 ---
 
-## Slide 11 — "Checkout without asking the merchant for anything"
+## Slide 5 - "Detecting a checkout form without asking the merchant for anything"
 
 **Talking points**
-- Original design required merchants to embed a JS snippet before their customers could pay with Atlus — the same adoption bottleneck every "accept crypto" plugin hits: no merchants, no users; no users, no merchants.
-- New model: Atlus Pay ships as a browser extension the *user* installs. It detects the checkout form itself and injects the button — no merchant integration, ever. Same distribution shape as Honey or a password manager's autofill.
-- Underlying payment mechanics (swap → lock → fiat leg → reveal → settle) don't change — this pivot is only about how the button gets in front of the user.
+- No merchant integration means the extension has to find the card number field itself, on a page it has never seen before.
+- The approach: a list of common `autocomplete`, `name`, and `id` patterns real checkout forms use, checked in order.
+- A `MutationObserver` keeps watching after the first scan, since a lot of checkout forms render after the initial page load (single page app checkouts, async payment steps).
 
-**Code piece 1 — detecting a checkout form without any merchant cooperation**
+---
+
+## Slide 6 - "Finding the field, then actually filling it"
+
+**Talking points**
+- Finding the field is the easy half. Filling it in a way a real, modern checkout form notices is the part that actually breaks if done naively.
+
+**Code piece 1, the selector list**
 ```js
 const CARD_NUMBER_SELECTORS = [
   'input[autocomplete="cc-number"]',
@@ -163,21 +114,13 @@ const CARD_NUMBER_SELECTORS = [
   'input[id*="cardnumber" i]',
   'input[name*="cc-number" i]',
 ];
-
-function findField(selectors) {
-  for (const selector of selectors) {
-    const el = document.querySelector(selector);
-    if (el) return el;
-  }
-  return null;
-}
 ```
 
-**Code piece 2 — filling a field the way a real keystroke would**
+**Code piece 2, the fix that made autofill actually work**
 ```js
-// Broken idea: field.value = cardNumber — silently ignored by any
-// checkout form built with React/Vue, because they track input through
-// the framework's own state, not the raw DOM value.
+// Broken idea: field.value = cardNumber, silently ignored by any
+// checkout form built with React or Vue, since they track input through
+// framework state, not the raw DOM value.
 
 // Working version: go through the native setter first, then dispatch
 // the events the framework is actually listening for.
@@ -190,38 +133,208 @@ function setNativeValue(field, value) {
 }
 ```
 
-**How they connect:** piece 1 finds the field, piece 2 is what makes filling it actually work on a real, modern checkout page instead of only on a plain static HTML form. Skipping piece 2 would have made the whole extension look broken on exactly the kind of checkout pages (React/Vue-based) that matter most.
+**How they connect:** skipping the second piece would have made the extension look broken on exactly the checkout pages that matter most, since almost every real store runs on React or Vue, not a plain static form.
 
 ---
 
-## Slide 12 — "One click, one payment: proving the message-passing doesn't double-fire"
+## Slide 7 - "What happens between clicking the button and the card appearing"
 
 **Talking points**
-- The extension has three separate scripts (content script, service worker, popup) all talking to each other asynchronously — the kind of system where a bug shows up as "the user got charged twice," not a stack trace.
-- No real coordinator exists yet, so this was tested against a throwaway mock server implementing the same two-endpoint hashlock shape (`/api/pay` → `/api/reveal`) the real one will use, driven by a real loaded copy of the extension via Playwright — not just code review.
-- First-ever run showed two `/api/pay` calls for one click. Instead of assuming it was fine and moving on, added instrumentation and reran with a clean profile.
+- Click "Pay with Atlus" on the checkout page, a small popup opens showing the detected amount.
+- Confirm in the popup, and the service worker calls the coordinator twice: once to open a hashlocked order, once to reveal the card after a simulated settlement delay.
+- The card details go back to the exact tab that started the payment, never to the popup, never broadcast anywhere else.
 
-**Code piece 1 — the instrumentation that isolated it**
+---
+
+## Slide 8 - "The two-step coordinator call"
+
+**Talking points**
+- The shape here (lock, then reveal) mirrors a real hashlock or HTLC. In a real deployment the secret would be revealed by an on-chain transaction settling, not handed back directly by the server.
+
+**Code piece 1, opening the order**
+```js
+const payResponse = await fetch(`${COORDINATOR_URL}/api/pay`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ amount, merchant: paymentState.merchant, walletAddress }),
+});
+const { orderId, secret } = await payResponse.json();
+```
+
+**Code piece 2, revealing the card**
+```js
+await new Promise((resolve) => setTimeout(resolve, 200)); // simulated settlement gap
+
+const revealResponse = await fetch(`${COORDINATOR_URL}/api/reveal`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ orderId, secret }),
+});
+const { cardNumber, expiry, cvv } = await revealResponse.json();
+```
+
+**How they connect:** the 200ms delay between them isn't padding, it's standing in for the real gap between a swap being submitted and a swap actually settling on-chain, so the UI shape (lock, wait, reveal) is honest even though the wait itself is fake for now.
+
+---
+
+## Slide 9 - "The extension doesn't know your email. The website does."
+
+**Talking points**
+- The extension only ever learns a wallet address, never an email. Privacy by construction, not by promise.
+- The website already knows both, once you've onboarded. It relays the wallet address to the extension the moment you connect, over `window.postMessage`.
+- The extension stores it in `chrome.storage.local` so it survives a service worker restart, and attaches it to every payment going forward.
+
+---
+
+## Slide 10 - "A one-way bridge, and only on one page"
+
+**Talking points**
+- This content script is scoped to the Atlus Pay site only (see Slide 2's manifest snippet), so it never runs on a merchant's checkout page.
+
+**Code piece 1, the website side**
+```tsx
+useEffect(() => {
+  if (isConnected && address) {
+    window.postMessage(
+      { source: "atlus-pay-website", type: "WALLET_CONNECTED", address },
+      window.location.origin
+    );
+  }
+}, [isConnected, address]);
+```
+
+**Code piece 2, the extension side**
+```js
+window.addEventListener("message", (event) => {
+  if (event.source !== window) return;
+  if (event.data?.source !== "atlus-pay-website") return;
+
+  if (event.data.type === "WALLET_CONNECTED" && event.data.address) {
+    chrome.runtime.sendMessage({ action: "walletConnected", address: event.data.address });
+  }
+});
+```
+
+**How they connect:** the `source: "atlus-pay-website"` marker in both directions matters. `window.postMessage` is otherwise readable by anything else injected on the page, so the extension checks that marker before trusting a message at all.
+
+---
+
+## Slide 11 - "Every payment ends with an email, not a hope"
+
+**Talking points**
+- The old flow said "the user gets a confirmation." That was aspirational until there was a backend that actually recorded a transaction and sent something.
+- Now: the moment a payment succeeds, the extension fires a request at the website recording the transaction and, if that wallet has a known email, sending a summary.
+- It's fire and forget on purpose. The payment already succeeded from the user's point of view once the card is filled; a failed email shouldn't retroactively look like a failed payment.
+
+---
+
+## Slide 12 - "Recording the transaction and sending the receipt"
+
+**Talking points**
+- Runs server side with the Supabase service role key, since it needs to look up an email by wallet address, something the browser's anon key is deliberately not allowed to do.
+
+**Code piece 1, the extension's fire and forget call**
+```js
+function notifyWebsiteOfTransaction(details) {
+  fetch(`${WEBSITE_URL}/api/transactions/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(details),
+  }).catch((error) => {
+    console.warn("Atlus Pay: failed to record transaction / send confirmation email", error);
+  });
+}
+```
+
+**Code piece 2, the route that records and emails**
+```ts
+await supabaseAdmin.from("transactions").insert({ wallet_address, amount, merchant, card_last4 });
+
+const { data: user } = await supabaseAdmin
+  .from("users")
+  .select("email")
+  .eq("wallet_address", walletAddress)
+  .maybeSingle();
+
+if (user?.email) {
+  await resend.emails.send({ from: FROM_ADDRESS, to: user.email, subject: "Payment confirmed", html });
+}
+```
+
+**How they connect:** the transaction gets recorded either way. The email is best effort on top, since a wallet that hasn't onboarded through the website has no email to send to at all.
+
+---
+
+## Slide 13 - "Proving three async scripts don't double-charge anyone"
+
+**Talking points**
+- The extension has three separate scripts (content script, service worker, popup) all talking to each other asynchronously. The kind of system where a bug shows up as "the user got charged twice," not a stack trace.
+- Tested against a throwaway mock coordinator with a real loaded copy of the extension via Playwright, not just code review.
+- First-ever run showed two `/api/pay` calls for one click. Instead of assuming it was a fluke, added instrumentation and reran with a clean browser profile.
+
+---
+
+## Slide 14 - "What the instrumentation proved"
+
+**Code piece 1, the instrumentation**
 ```js
 const SW_INSTANCE_ID = Math.random().toString(36).slice(2, 8);
-console.log("[bg]", SW_INSTANCE_ID, "service worker (re)started");
-
 chrome.runtime.onMessage.addListener((message, sender) => {
   console.log("[bg]", SW_INSTANCE_ID, "received", message.action, JSON.stringify(message));
   // ...
 });
 ```
 
-**Code piece 2 — what it proved**
+**Code piece 2, what four runs showed**
 ```
-Run 1 (first-ever load):  order_1 {amount only}  -> order_2 {full body}   -- 2 calls
-Run 2 (fresh profile):    order_2 {full body}                            -- 1 call
-Run 3 (fresh profile):    order_3 {full body}                            -- 1 call
-Run 4 (fresh profile):    order_4 {full body}                            -- 1 call
+Run 1 (first-ever load):  order_1 {amount only}  ->  order_2 {full body}   2 calls
+Run 2 (fresh profile):    order_2 {full body}                             1 call
+Run 3 (fresh profile):    order_3 {full body}                             1 call
+Run 4 (fresh profile):    order_4 {full body}                             1 call
 ```
 
-**How they connect:** the instrumentation didn't just confirm "it works" — it proved *which* layer the bug lived in. A single service-worker instance ID appearing exactly once per confirmed run, across three clean repeats, rules out the message-passing logic as the cause and points at a one-off Chrome extension first-install lifecycle quirk instead (the very first activation of a never-before-seen extension ID double-firing lifecycle events). Debug logging was removed once the conclusion was reached — it was a diagnostic, not a shipped feature.
+**How they connect:** a single service worker instance ID appearing exactly once per confirmed run, across three clean repeats, rules out the message-passing logic as the cause. Points at a one-off Chrome extension first-install lifecycle quirk instead. Debug logging was removed once that conclusion was reached; it was a diagnostic, not a shipped feature.
 
 ---
 
-<!-- Next slides: replace placeholder code sections above with real code once written. First real code slide should be the escrow contract's proof-verification function, since Slide 5/RESEARCH.md flags it as the highest-risk piece to get right. -->
+## Slide 15 - "Real product means real disclosures"
+
+**Talking points**
+- Atlus Pay currently runs on a test network with a sandboxed card issuer, but it's built to eventually handle real funds. The legal pages say that plainly instead of hiding behind "just a test project."
+- Terms, Privacy, and a Risk & Third-Party Disclosures page now sit behind every page of the site, not just the homepage.
+- The disclosures page lists every external service the product actually depends on today (Supabase, Resend, Reown, wagmi, Sepolia, Stripe Issuing sandbox), not a generic boilerplate list.
+
+---
+
+## Slide 16 - "One layout, every page"
+
+**Code piece 1, the shared shell**
+```tsx
+<body className="min-h-full flex flex-col">
+  <Providers>
+    <Header />
+    <div className="flex flex-1 flex-col">{children}</div>
+    <Footer />
+  </Providers>
+</body>
+```
+
+**Code piece 2, the reusable legal page shape**
+```tsx
+export function LegalSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h2 className="text-lg font-semibold">{title}</h2>
+      <div className="mt-2 space-y-3 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+        {children}
+      </div>
+    </section>
+  );
+}
+```
+
+**How they connect:** moving Header and Footer into the root layout meant Terms, Privacy, and Disclosures got consistent navigation for free the moment they were created, rather than needing their own header/footer copy pasted into each page.
+
+---
+
+<!-- Next slide: whichever real coordinator work happens next. Slide 8's mocked /api/pay and /api/reveal are the highest-risk piece still left to build for real, per RESEARCH.md's escrow proof-of-payment section. -->

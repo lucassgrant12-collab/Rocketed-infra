@@ -1,4 +1,4 @@
-// background.js — Atlus Pay service worker
+// background.js - Atlus Pay service worker
 //
 // Central message hub. Three sources send messages here:
 //   - content.js (on checkout pages)       -> "initiatePayment"
@@ -6,7 +6,7 @@
 //   - wallet-bridge.js (on the Atlus site) -> "walletConnected", "walletDisconnected"
 //
 // Payment state (which tab asked, what amount) is transaction-scoped and
-// kept in memory — a service worker can be killed and restarted between
+// kept in memory - a service worker can be killed and restarted between
 // messages, but a single payment's lifetime (click -> confirm -> card
 // filled) is a few seconds, so there's nothing worth persisting there.
 // The connected wallet address is different: it needs to survive restarts
@@ -14,6 +14,7 @@
 // chrome.storage.local instead.
 
 const COORDINATOR_URL = "http://localhost:3000";
+const WEBSITE_URL = "http://localhost:3000";
 
 let paymentState = null; // { tabId, amount, merchant }
 let popupWindowId = null;
@@ -38,7 +39,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     default:
       break;
   }
-  // No branch above uses sendResponse — card details and payment outcomes
+  // No branch above uses sendResponse - card details and payment outcomes
   // travel as their own follow-up messages ("fillCard", "paymentSucceeded",
   // "paymentFailed") instead, since they only become available after an
   // async coordinator round trip and, for initiatePayment, after the user
@@ -128,11 +129,32 @@ async function handleConfirmPayment(message) {
     });
 
     notifyPopup({ action: "paymentSucceeded" });
+
+    // Fire-and-forget: records the transaction and, if this wallet has a
+    // known email, sends a confirmation. The payment already succeeded
+    // from the user's point of view (the card is filled), so a failure
+    // here is logged but never surfaced as a payment failure.
+    notifyWebsiteOfTransaction({
+      walletAddress: walletAddress ?? null,
+      amount,
+      merchant: paymentState.merchant,
+      cardLast4: cardNumber.slice(-4),
+    });
   } catch (error) {
     notifyPopup({ action: "paymentFailed", message: error.message });
   } finally {
     paymentState = null;
   }
+}
+
+function notifyWebsiteOfTransaction(details) {
+  fetch(`${WEBSITE_URL}/api/transactions/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(details),
+  }).catch((error) => {
+    console.warn("Atlus Pay: failed to record transaction / send confirmation email", error);
+  });
 }
 
 function handleCancelPayment() {
@@ -141,8 +163,8 @@ function handleCancelPayment() {
 }
 
 function notifyPopup(message) {
-  // The popup window may already be gone (user closed it manually) —
-  // sendMessage rejects in that case, which is fine to swallow.
+  // The popup window may already be gone (user closed it manually),
+  // so sendMessage rejects in that case, which is fine to swallow.
   chrome.runtime.sendMessage(message).catch(() => {});
 }
 

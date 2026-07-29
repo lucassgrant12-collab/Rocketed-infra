@@ -1,4 +1,4 @@
-// popup.js — Atlus Pay payment confirmation window
+// popup.js - Atlus Pay payment confirmation window
 //
 // This is opened by background.js as a standalone chrome.windows.create
 // popup, not the toolbar's default_popup. Shows the amount content.js
