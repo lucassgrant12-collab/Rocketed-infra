@@ -40,9 +40,23 @@ export function OnboardingCard() {
 
     async function saveOnboarding() {
       setStatus("saving");
-      const { error } = await supabase
+
+      // Plain insert, falling back to a plain update on a wallet_address
+      // conflict, instead of .upsert()'s INSERT ... ON CONFLICT DO UPDATE.
+      // Postgres requires a SELECT policy to resolve that ON CONFLICT path
+      // under RLS, even when no conflict actually exists yet, and there's
+      // deliberately no SELECT policy on this table (anon can write an
+      // onboarding row but can't read anyone else's email/wallet back).
+      // Two plain statements only need the INSERT and UPDATE policies that
+      // already exist.
+      const { error: insertError } = await supabase
         .from("users")
-        .upsert({ email, wallet_address: address }, { onConflict: "wallet_address" });
+        .insert({ email, wallet_address: address });
+
+      const error =
+        insertError?.code === "23505"
+          ? (await supabase.from("users").update({ email }).eq("wallet_address", address)).error
+          : insertError;
 
       if (cancelled) return;
 
