@@ -66,6 +66,13 @@ No real browser wallet extension is available in this dev environment, so verifi
 
 Same underlying `injected()` wagmi connector path is used for MetaMask, Rainbow, and Coinbase Wallet's browser-extension mode, so this test covers their connection mechanics too — only WalletConnect's QR path is untested here (needs a real project ID and an actual mobile wallet to test meaningfully).
 
+## 2026-07-29 — Landing page design pass
+
+- Extracted the stateful onboarding logic (email step + wallet connect + Supabase save) out of `app/page.tsx` into [web/components/OnboardingCard.tsx](web/components/OnboardingCard.tsx), styled as a white/dark card (rounded-2xl, soft shadow, ring) matching the polish of RainbowKit's own connect modal — same visual language, since that's the one piece of UI on the page already proven to look right.
+- `app/page.tsx` is now the marketing shell around that card: header with wordmark + a "Sepolia Testnet" badge (honest signal that this is a demo, not real funds), a two-column hero on desktop (headline/subtext/3-step "how it works" list next to the card, stacking to one column on mobile), and a one-line footer.
+- Fixed a pre-existing bug in [web/app/globals.css](web/app/globals.css): `body` hardcoded `font-family: Arial`, silently overriding the Geist font that's loaded via `next/font` and exposed as `--font-sans` — the custom font was never actually rendering. Now reads `var(--font-sans)` first.
+- Verified: `npm run build` passes; screenshotted the page in light, dark, and mobile viewports via Playwright — all render correctly, card and hero both responsive. Re-ran the mock-wallet Playwright test from the previous entry against the new layout to confirm the connect flow still works unchanged after the restructure (it does — same `id="email"` and button text, so the DOM contract didn't shift).
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):

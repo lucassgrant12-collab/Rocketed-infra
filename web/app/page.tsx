@@ -1,114 +1,85 @@
-"use client";
+import { OnboardingCard } from "@/components/OnboardingCard";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { useAccount } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { supabase } from "@/lib/supabaseClient";
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const STEPS = [
+  {
+    number: "1",
+    title: "Connect your wallet",
+    description: "Any crypto you're holding — we don't ask which.",
+  },
+  {
+    number: "2",
+    title: "We convert instantly",
+    description: "Your crypto swaps to a stablecoin the moment you pay.",
+  },
+  {
+    number: "3",
+    title: "Merchant gets paid",
+    description: "In ordinary fiat, in under two seconds. They never see crypto.",
+  },
+];
 
 export default function Home() {
-  const { address, isConnected } = useAccount();
-  const [email, setEmail] = useState("");
-  const [emailConfirmed, setEmailConfirmed] = useState(false);
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
-    "idle"
-  );
-  const [errorMessage, setErrorMessage] = useState("");
-
-  useEffect(() => {
-    if (!emailConfirmed || !isConnected || !address) return;
-
-    let cancelled = false;
-
-    async function saveOnboarding() {
-      setStatus("saving");
-      const { error } = await supabase
-        .from("users")
-        .upsert({ email, wallet_address: address }, { onConflict: "wallet_address" });
-
-      if (cancelled) return;
-
-      if (error) {
-        setStatus("error");
-        setErrorMessage(error.message);
-        return;
-      }
-
-      setStatus("saved");
-    }
-
-    saveOnboarding();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [emailConfirmed, isConnected, address, email]);
-
-  function handleEmailSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!EMAIL_PATTERN.test(email)) {
-      setErrorMessage("Enter a valid email address.");
-      return;
-    }
-    setErrorMessage("");
-    setEmailConfirmed(true);
-  }
-
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-8 px-6 py-16">
-      <div className="w-full max-w-sm space-y-8 text-center">
-        <div>
-          <h1 className="text-2xl font-semibold">Atlus Pay</h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            Pay for anything online with any crypto.
-          </p>
-        </div>
-
-        {!emailConfirmed ? (
-          <form onSubmit={handleEmailSubmit} className="space-y-3 text-left">
-            <label htmlFor="email" className="block text-sm font-medium">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-              className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
-            />
-            <button
-              type="submit"
-              className="w-full rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
-            >
-              Continue
-            </button>
-            {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-          </form>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-neutral-500">
-              Signed up as <span className="font-medium">{email}</span>
-            </p>
-            <div className="flex justify-center">
-              <ConnectButton />
+    <div className="flex flex-1 flex-col">
+      <header className="border-b border-neutral-200/70 dark:border-neutral-800">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-sm font-bold text-white dark:bg-white dark:text-neutral-900">
+              A
             </div>
-            {status === "saving" && (
-              <p className="text-sm text-neutral-500">Saving...</p>
-            )}
-            {status === "saved" && (
-              <p className="text-sm text-green-600">
-                You&apos;re onboarded. Confirmation sent to {email}.
-              </p>
-            )}
-            {status === "error" && (
-              <p className="text-sm text-red-600">{errorMessage}</p>
-            )}
+            <span className="font-semibold tracking-tight">Atlus Pay</span>
           </div>
-        )}
-      </div>
-    </main>
+          <span className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+            Sepolia Testnet
+          </span>
+        </div>
+      </header>
+
+      <main className="flex flex-1 items-center">
+        <div className="mx-auto grid w-full max-w-5xl items-center gap-16 px-6 py-16 lg:grid-cols-2 lg:py-24">
+          <div className="space-y-10">
+            <div className="space-y-4 text-center lg:text-left">
+              <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
+                Pay with any crypto,{" "}
+                <span className="text-neutral-400 dark:text-neutral-500">
+                  anywhere online.
+                </span>
+              </h1>
+              <p className="text-lg text-neutral-500 dark:text-neutral-400">
+                No manual swaps, no waiting to cash out. Connect a wallet and
+                check out like normal — the merchant never knows crypto was
+                involved.
+              </p>
+            </div>
+
+            <ul className="space-y-5">
+              {STEPS.map((step) => (
+                <li key={step.number} className="flex gap-4">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-semibold text-white dark:bg-white dark:text-neutral-900">
+                    {step.number}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium">{step.title}</p>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      {step.description}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="flex justify-center lg:justify-end">
+            <OnboardingCard />
+          </div>
+        </div>
+      </main>
+
+      <footer className="border-t border-neutral-200/70 py-6 dark:border-neutral-800">
+        <p className="text-center text-xs text-neutral-400 dark:text-neutral-600">
+          Atlus Pay — a Year 11 AIF project. Testnet only, no real funds.
+        </p>
+      </footer>
+    </div>
   );
 }
