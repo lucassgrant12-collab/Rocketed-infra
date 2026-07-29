@@ -48,6 +48,24 @@ Convention: one entry per work session, newest at the bottom, dated. Log decisio
 - `web/.env.local` needs actual Supabase project URL/anon key and a WalletConnect Cloud project ID — onboarding won't actually persist to Supabase or support WalletConnect-based wallets until then.
 - `supabase/001_users.sql` needs to be run against the actual Supabase project (SQL editor or CLI) before the app's upsert will succeed.
 
+## 2026-07-29 — Phantom wallet added; connect flow verified end-to-end
+
+### How wallet connect actually works
+
+[web/lib/wagmi.ts](web/lib/wagmi.ts) switched from RainbowKit's `getDefaultConfig` (a fixed default wallet set) to explicit `connectorsForWallets`, listing `metaMaskWallet`, `phantomWallet`, `rainbowWallet`, `coinbaseWallet`, `walletConnectWallet`. The first four detect the wallet's browser extension directly (e.g. Phantom's connector looks for `window.phantom.ethereum`) and connect via a standard EIP-1193 `request({ method: "eth_requestAccounts" })` call — no WalletConnect project ID involved. Only the `walletConnectWallet` option (for wallets without a matching browser extension, e.g. scanning a QR code with a mobile wallet) actually needs the real project ID from cloud.reown.com; until `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set, that one specific option won't work, but it no longer breaks the build (see the placeholder-projectId fix from the previous entry) and the other four wallets are unaffected.
+
+Once a wallet connects, `useAccount()` in [web/app/page.tsx](web/app/page.tsx) picks up the address, which triggers the existing onboarding-save effect. Reconnection is automatic on future visits — wagmi silently calls `eth_accounts` on mount, and if the wallet already authorized this site, the user lands back in a connected state without re-clicking anything.
+
+### Verification method
+
+No real browser wallet extension is available in this dev environment, so verified with a Playwright script that injects a mock EIP-1193 provider at `window.phantom.ethereum` (same shape a real Phantom extension exposes) before the page loads, then drives the actual UI: fills the email field, clicks Continue, opens the connect modal, clicks Phantom, and asserts the connected state renders.
+
+- Confirmed the modal lists all 5 configured wallets: MetaMask, Phantom, Rainbow, Coinbase Wallet, WalletConnect.
+- First mock attempt had `eth_accounts` always return an address, which caused wagmi to silently auto-reconnect before the modal was ever opened — a real finding about existing behavior (persistent connection across reloads works), not a bug, but it meant the test wasn't exercising the manual click-to-connect path. Fixed the mock to only return an address from `eth_requestAccounts` (i.e. only after an explicit connect), matching how a real un-authorized wallet behaves.
+- With that fix, the full flow completed: address `0x12…7890` rendered in the RainbowKit account button after clicking Phantom in the modal, and the onboarding-save effect fired immediately after, failing with a visible "TypeError: Failed to fetch" — expected, since `.env.local` still points at a placeholder Supabase URL. Confirms the error-handling path (Slide 10 / the earlier "don't throw at import time" fix) degrades gracefully instead of crashing.
+
+Same underlying `injected()` wagmi connector path is used for MetaMask, Rainbow, and Coinbase Wallet's browser-extension mode, so this test covers their connection mechanics too — only WalletConnect's QR path is untested here (needs a real project ID and an actual mobile wallet to test meaningfully).
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):
