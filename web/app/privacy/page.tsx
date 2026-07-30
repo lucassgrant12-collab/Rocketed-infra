@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LegalLayout, LegalSection } from "@/components/LegalLayout";
 
 export const metadata = { title: "Privacy Policy | Atlus Pay" };
@@ -45,8 +46,11 @@ export default function PrivacyPage() {
           </li>
         </ul>
         <p>
-          A full list of external services this product depends on is on the
-          Risk & Third-Party Disclosures page.
+          A full list of external services this product depends on is on the{" "}
+          <Link href="/disclosures" className="underline">
+            Risk & Third-Party Disclosures
+          </Link>{" "}
+          page.
         </p>
       </LegalSection>
 
@@ -54,7 +58,13 @@ export default function PrivacyPage() {
         <p>
           A merchant you pay through Atlus Pay sees an ordinary card payment.
           They do not see your wallet address, your email, or that crypto
-          was involved in the transaction at all.
+          was involved in the transaction at all. For the fuller picture of
+          what stays private and what doesn&rsquo;t, including the parts
+          outside Atlus Pay&rsquo;s control, see the{" "}
+          <Link href="/anonymity" className="underline">
+            Anonymity
+          </Link>{" "}
+          page.
         </p>
       </LegalSection>
 

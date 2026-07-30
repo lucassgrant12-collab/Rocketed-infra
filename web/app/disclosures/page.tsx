@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LegalLayout, LegalSection } from "@/components/LegalLayout";
 
 export const metadata = { title: "Risk & Third-Party Disclosures | Atlus Pay" };
@@ -62,6 +63,12 @@ export default function DisclosuresPage() {
         <p>
           None of these providers are operated by Atlus Pay, and each has its
           own terms and privacy practices governing the data it processes.
+          For what each of these can and can&rsquo;t see about you
+          specifically, see the{" "}
+          <Link href="/anonymity" className="underline">
+            Anonymity
+          </Link>{" "}
+          page.
         </p>
       </LegalSection>
 

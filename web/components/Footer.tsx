@@ -4,6 +4,7 @@ const LEGAL_LINKS = [
   { href: "/terms", label: "Terms of Service" },
   { href: "/privacy", label: "Privacy Policy" },
   { href: "/disclosures", label: "Risk & Third-Party Disclosures" },
+  { href: "/anonymity", label: "Anonymity" },
 ];
 
 export function Footer() {
