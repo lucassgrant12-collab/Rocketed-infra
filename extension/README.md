@@ -22,15 +22,15 @@ Manifest V3 Chrome extension. Injects a "Pay with Atlus" button into any checkou
 
 ## Test against the dummy checkout page
 
-The coordinator this extension talks to (`http://localhost:3000/api/pay`, `/api/reveal`) isn't part of this folder - bring your own, or point `COORDINATOR_URL` in `background.js` at wherever it's running.
+The coordinator this extension talks to is [../coordinator](../coordinator), a mock of Bitrefill's prepaid card API. It runs as its own server, separate from the website, so both can run at once without a port conflict.
 
-1. Start whatever coordinator is running on `http://localhost:3000` (or update `COORDINATOR_URL` in `background.js` to match).
-2. Serve `test/checkout.html` over HTTP - not `file://`, since Chrome doesn't run content scripts on `file://` pages without an explicit extra permission. Any static server works, e.g. from the `extension/` folder: `npx serve test`.
+1. Start the coordinator: `cd coordinator && npm install && npm start` (listens on `http://localhost:3001`).
+2. Serve `test/checkout.html` over HTTP, not `file://`, since Chrome doesn't run content scripts on `file://` pages without an explicit extra permission. Any static server works, e.g. from the `extension/` folder: `npx serve test`.
 3. Open the served URL. A "Pay with Atlus" button should appear directly above the card number field.
-4. Click it - a small popup window opens showing the detected total ($49.99, pulled from the page's `.order-total`).
-5. Click **Confirm**. The popup shows "Processing...", the service worker calls `/api/pay` then `/api/reveal`, and on success the popup closes itself and the checkout page's card number / expiry / CVV fields fill in automatically.
-6. To test the "amount not detected" path, remove or rename the `id="total"` / `class="order-total"` element in `checkout.html` before reloading - the popup should show a manual amount input instead.
+4. Click it, a small popup window opens showing the detected total ($49.99, pulled from the page's `.order-total`).
+5. Click **Confirm**. The popup shows "Processing...", the service worker calls the coordinator's `/api/atlus/create-payment` then `/api/atlus/complete-payment`, and on success the popup closes itself and the checkout page's card number / expiry / CVV fields fill in automatically (Stripe's well-known `4242...` test number, from the mock).
+6. To test the "amount not detected" path, remove or rename the `id="total"` / `class="order-total"` element in `checkout.html` before reloading, the popup should show a manual amount input instead.
 
 ## Wallet sync
 
-`wallet-bridge.js` only runs on `http://localhost:3000/*` (the Atlus Pay website itself - update this match pattern once there's a production domain). When the website connects a wallet, it posts a `window.postMessage` that this script relays to the service worker, which stores the address in `chrome.storage.local`. The stored address (if any) rides along on the `/api/pay` call as `walletAddress` - it's informational for the coordinator, not required for the mock flow to work.
+`wallet-bridge.js` only runs on `http://localhost:3000/*` (the Atlus Pay website itself, update this match pattern once there's a production domain). When the website connects a wallet, it posts a `window.postMessage` that this script relays to the service worker, which stores the address in `chrome.storage.local`. The stored address, if any, isn't sent to the coordinator (Bitrefill doesn't need to know about Atlus accounts), it's used when reporting the completed transaction back to the website for the confirmation email.

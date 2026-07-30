@@ -148,3 +148,35 @@ The new model removes that requirement entirely. **Atlus Pay ships as a Chrome e
 ### What this doesn't change
 
 The underlying payment mechanics (swap → lock → fiat leg → reveal → settle) and the open questions already logged above (authorization-vs-settlement timing, who verifies the proof, the v1 custodial tension) are unaffected - this pivot is about **how the button gets in front of the user**, not about who holds funds or how proof-of-payment works. Those still need to be wired into the real coordinator when it moves past the mock `/api/pay` / `/api/reveal` stand-in.
+
+---
+
+## 2026-07-29 - Pivot: Bitrefill replaces Stripe Issuing as the card-issuing plan
+
+Earlier entries in this file describe Stripe Issuing (or Marqeta, mentioned as an alternative in the original debrief) as the card-issuing rail. That's dropped. **Bitrefill**, the large existing crypto prepaid card vendor, is the new plan instead of building or getting approved for a bespoke card-issuing integration from scratch.
+
+### Why this is a meaningfully different shape, not just a vendor swap
+
+Stripe Issuing means Atlus itself becomes the card program: applying for Issuing access, holding the issuing relationship, taking on the compliance surface that comes with actually minting cards. Bitrefill already does the crypto-to-prepaid-card conversion as its core product, at consumer scale, today. Routing through Bitrefill instead means Atlus is a client of an existing card-issuing business, not the card issuer itself. That's a smaller regulatory footprint for the card-issuing leg specifically (the KYC/AML and issuing-license questions become Bitrefill's problem, not Atlus's), at the cost of depending on a third party's API, pricing, and rate limits instead of controlling the whole stack.
+
+### The mechanical flow, as designed for the mock and the eventual real integration
+
+1. Atlus's coordinator opens an invoice with Bitrefill for the fiat card value the user wants (e.g. a $100 card), specifying the crypto currency to pay in (USDT). Bitrefill returns a payment address and the crypto amount owed, priced with Bitrefill's own fee built in (the mock uses a flat 5% markup as a stand-in for whatever Bitrefill's real rate turns out to be).
+2. The user's wallet would send that crypto amount directly to Bitrefill's payment address. Not through an Atlus-held address, not through Atlus at all: this preserves the non-custodial claim from the very first entry in this file, since Atlus never touches the funds even momentarily.
+3. Once that payment settles, Bitrefill's invoice status flips to paid and the card details become available.
+4. Atlus's coordinator (polling or, better, via a webhook once that's supported) retrieves the card and hands it to the extension to fill into the checkout form.
+
+### What's mocked right now, and why the mock is structured the way it is
+
+[coordinator/server.js](coordinator/server.js) implements this shape entirely in memory, with no real Bitrefill account behind it yet. The mock deliberately exposes two layers rather than one:
+
+- A faithful mock of Bitrefill's own API shape (`/api/bitrefill/invoice`, `GET /api/bitrefill/invoice/:id`), so that replacing the mock later is a matter of making those specific handlers proxy to the real `api.bitrefill.com` instead of touching an in-memory `Map`.
+- Atlus's own convenience endpoints (`/api/atlus/create-payment`, `/api/atlus/complete-payment`), which are the only ones the extension ever calls. This is the layer of indirection that matters: the extension's contract with "the coordinator" doesn't change when the card provider underneath does.
+
+Step 2 above (the user's wallet actually sending crypto) is entirely skipped in the current mock: `complete-payment` marks the invoice paid immediately rather than waiting for a real payment to land. That's the same "simulate the settlement gap" pattern used everywhere else in this project so far, not a new shortcut invented for Bitrefill specifically.
+
+### Still open
+
+- No live Bitrefill account exists yet. Getting one, and understanding their actual fee structure, product catalog (which card denominations/brands they actually support), and settlement-detection mechanism (webhook vs required polling), is unstarted.
+- The "user's wallet sends crypto directly to Bitrefill's payment address" step has no real implementation. This is where an actual on-chain transaction would need to be constructed and signed by the user's connected wallet, currently the flow just assumes it already happened.
+- Prior-art references to Stripe Issuing / Marqeta earlier in this file (the escrow proof-of-payment section, the monetization section) describe reasoning from before this pivot. Left as-is rather than rewritten, since they're an accurate record of what was being considered at the time, but Bitrefill is the current plan, not those.

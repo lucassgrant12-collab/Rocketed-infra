@@ -179,6 +179,37 @@ Adding a permissive SELECT policy would have been the one-line fix, but it would
 - Full onboarding flow retested end to end against the real Supabase project (not a placeholder): email, connect wallet, "You're onboarded. Confirmation sent to \[email\]." actually renders.
 - Cleaned up the five test rows (`sql-test@`, `service-role-test@`, `no-representation-test@`, `network-test@`, `test@example.com`) created on the live project while diagnosing this, using the service role key.
 
+## 2026-07-30 - Stripe Issuing dropped, Bitrefill mock coordinator built
+
+Stripe Issuing is out. Card issuing now routes through Bitrefill instead, an existing crypto prepaid card vendor, so Atlus is a client of a card program rather than becoming a card issuer itself. No live Bitrefill account exists yet, so a real, standalone mock coordinator was built to the shape Bitrefill's actual API uses. Full reasoning in [RESEARCH.md](RESEARCH.md#2026-07-29---pivot-bitrefill-replaces-stripe-issuing-as-the-card-issuing-plan).
+
+### Built - `coordinator/` (new top-level service)
+
+- [coordinator/server.js](coordinator/server.js) - a standalone Express server, not part of the Next.js website, listening on its own port (3001) so it can run alongside the website (3000) without a port conflict. That conflict was a real annoyance in earlier testing rounds, this removes it going forward.
+- Mocks Bitrefill's own API shape (`POST /api/bitrefill/invoice`, `GET /api/bitrefill/invoice/:id`) using an in-memory `Map`, plus a `POST /api/bitrefill/simulate-payment` that isn't a real Bitrefill endpoint, it stands in for "the wallet's crypto payment actually settled" until real payment detection exists.
+- Exposes two convenience endpoints, `POST /api/atlus/create-payment` and `POST /api/atlus/complete-payment`, which are the *only* ones the extension talks to. That indirection is deliberate: replacing the mock with a real Bitrefill account later only changes what's inside the `/api/bitrefill/*` handlers, never the extension.
+- Mock card details are Stripe's well-known `4242 4242 4242 4242` test number, obviously fake, never real.
+
+### Extension updated to match
+
+[extension/background.js](extension/background.js)'s `handleConfirmPayment` now calls `create-payment` then `complete-payment` against `http://localhost:3001` instead of the old ad hoc `/api/pay`/`/api/reveal` hashlock endpoints on port 3000. `WEBSITE_URL` (for recording transactions and sending confirmation emails) stays pointed at the Next.js site on port 3000, so the two servers now run side by side rather than sharing one origin.
+
+### A real bug found while testing this, not the coordinator's fault
+
+Running the extension against the real coordinator (not a throwaway test script this time) surfaced a genuine app bug: `web/app/api/transactions/complete/route.ts` required `walletAddress` to be present, and rejected `null` as "missing" with a 400. But `null` is exactly what the extension correctly sends when no wallet was ever connected through the website, meaning every extension-only payment (no prior onboarding) silently failed to record at all, and the extension's fire-and-forget fetch call swallowed the failure without even logging it, since a 400 response doesn't reject a `fetch()` promise.
+
+This contradicted the feature's own stated design ("a transaction still gets recorded even if this wallet has no onboarded email"), it just hadn't been tested against a real "no wallet" case before now. Fixed by making `walletAddress` genuinely optional end to end:
+
+- [supabase/002_transactions.sql](supabase/002_transactions.sql): `wallet_address` changed from `not null` to nullable, plus an explicit `alter table ... drop not null` since the table already existed on the live project with the old constraint (`create table if not exists` doesn't retroactively change an existing column).
+- [route.ts](web/app/api/transactions/complete/route.ts): validation now only requires `amount`. A missing wallet address still records the transaction, just skips the email lookup instead of rejecting the whole request.
+
+### Verified
+
+- Coordinator endpoints tested directly with curl: `create-payment` returns a correctly fee-adjusted `amountCrypto` (5% markup, e.g. $49.99 to $52.49), `complete-payment` returns the mock card.
+- Full extension flow retested against the real coordinator (not a mock server written just for the test, `coordinator/server.js` itself, running for real): button, popup, both coordinator calls, card autofill (`4242424242424242`, `12/30`, `123`), all correct.
+- Confirmed the transaction-recording bug by testing the actual failure case (`walletAddress: null`) directly against the live route before assuming the fix worked, then re-verified after applying it: `{"stored":true,"emailed":false}`. Reran the full extension flow afterward and confirmed the row actually landed in the live `transactions` table, not just that the endpoint returned success.
+- Cleaned up the test rows this created.
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):

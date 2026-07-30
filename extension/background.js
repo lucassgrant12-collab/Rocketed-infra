@@ -13,8 +13,8 @@
 // and outlive any single payment, so that one value lives in
 // chrome.storage.local instead.
 
-const COORDINATOR_URL = "http://localhost:3000";
-const WEBSITE_URL = "http://localhost:3000";
+const COORDINATOR_URL = "http://localhost:3001"; // coordinator/server.js (mock Bitrefill)
+const WEBSITE_URL = "http://localhost:3000"; // the Next.js site (records transactions, sends emails)
 
 let paymentState = null; // { tabId, amount, merchant }
 let popupWindowId = null;
@@ -89,36 +89,32 @@ async function handleConfirmPayment(message) {
   try {
     const { walletAddress } = await chrome.storage.local.get("walletAddress");
 
-    // Step 1: ask the coordinator to open a hashlocked order.
-    const payResponse = await fetch(`${COORDINATOR_URL}/api/pay`, {
+    // Step 1: open a payment with the coordinator, which mocks Bitrefill's
+    // invoice API (see coordinator/server.js). Returns a payment address
+    // and the crypto amount a real wallet would need to send there.
+    const createResponse = await fetch(`${COORDINATOR_URL}/api/atlus/create-payment`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount,
-        merchant: paymentState.merchant,
-        walletAddress: walletAddress ?? null,
-      }),
+      body: JSON.stringify({ amountFiat: Number(amount), currency: "USD" }),
     });
-    if (!payResponse.ok) {
-      throw new Error(`Coordinator /api/pay failed (${payResponse.status})`);
+    if (!createResponse.ok) {
+      throw new Error(`Coordinator create-payment failed (${createResponse.status})`);
     }
-    const { orderId, secret } = await payResponse.json();
+    const { invoiceId } = await createResponse.json();
 
-    // In a real flow the secret is revealed on-chain once the swap
-    // settles. Here the coordinator hands it back directly, so this
-    // delay just simulates that settlement gap for the UI.
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    // Step 2: reveal the secret to collect the virtual card.
-    const revealResponse = await fetch(`${COORDINATOR_URL}/api/reveal`, {
+    // Real flow: the user's wallet sends the quoted crypto amount to the
+    // invoice's payment address, and the coordinator waits for that to
+    // settle before releasing the card. Nothing moves real crypto yet, so
+    // this jumps straight to completion instead of prompting a wallet.
+    const completeResponse = await fetch(`${COORDINATOR_URL}/api/atlus/complete-payment`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, secret }),
+      body: JSON.stringify({ invoiceId }),
     });
-    if (!revealResponse.ok) {
-      throw new Error(`Coordinator /api/reveal failed (${revealResponse.status})`);
+    if (!completeResponse.ok) {
+      throw new Error(`Coordinator complete-payment failed (${completeResponse.status})`);
     }
-    const { cardNumber, expiry, cvv } = await revealResponse.json();
+    const { cardNumber, expiry, cvv } = await completeResponse.json();
 
     // Hand the card details to the checkout tab that started this.
     await chrome.tabs.sendMessage(paymentState.tabId, {

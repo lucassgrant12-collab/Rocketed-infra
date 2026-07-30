@@ -11,11 +11,15 @@ const FROM_ADDRESS = process.env.RESEND_FROM_EMAIL || "Atlus Pay <onboarding@res
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
 
-  if (!body?.walletAddress || !body?.amount) {
-    return NextResponse.json({ error: "walletAddress and amount are required" }, { status: 400 });
+  if (!body?.amount) {
+    return NextResponse.json({ error: "amount is required" }, { status: 400 });
   }
 
-  const walletAddress = String(body.walletAddress);
+  // walletAddress is optional: the extension can be used without ever
+  // going through website onboarding (no wallet-bridge sync happened), in
+  // which case the paying wallet is genuinely unknown. The transaction
+  // still gets recorded; only the confirmation email gets skipped.
+  const walletAddress = body.walletAddress ? String(body.walletAddress) : null;
   const amount = String(body.amount);
   const merchant = body.merchant ? String(body.merchant) : null;
   const cardLast4 = body.cardLast4 ? String(body.cardLast4) : null;
@@ -37,6 +41,10 @@ export async function POST(request: Request) {
 
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
+    if (!walletAddress) {
+      return NextResponse.json({ stored: true, emailed: false });
     }
 
     // Best-effort email lookup. A transaction still gets recorded above

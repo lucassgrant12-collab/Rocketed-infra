@@ -51,10 +51,12 @@ export default function DisclosuresPage() {
           </li>
           <li>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
-              Stripe Issuing, in sandbox mode
+              Bitrefill
             </span>{" "}
-            is the planned rail for issuing the one-time virtual card used at
-            checkout.
+            is the planned provider for issuing the one-time prepaid card used
+            at checkout. The card issuing step is currently a mock while a
+            live Bitrefill account is being set up, and returns obviously
+            fake test card data, never anything resembling a real card.
           </li>
         </ul>
         <p>
