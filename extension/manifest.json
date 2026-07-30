@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Atlus Pay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pay at any checkout with crypto. Atlus Pay detects the card form and fills it with a one-time virtual card.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],
@@ -12,12 +12,19 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
+      "css": ["styles.css"],
       "run_at": "document_idle"
     },
     {
       "matches": ["http://localhost:3000/*"],
       "js": ["wallet-bridge.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["<all_urls>"]
     }
   ],
   "action": {

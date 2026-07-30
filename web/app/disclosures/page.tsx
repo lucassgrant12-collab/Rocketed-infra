@@ -8,12 +8,12 @@ export default function DisclosuresPage() {
     <LegalLayout title="Risk & Third-Party Disclosures" lastUpdated="July 29, 2026">
       <LegalSection title="Current status">
         <p>
-          Atlus Pay currently runs on the Sepolia test network with a
-          sandboxed card issuing provider. No real cryptocurrency or real
-          fiat currency moves through the service in this state. This page
-          describes the risks that apply once a production deployment with
-          real funds exists, and the external services the product relies
-          on today.
+          Website account setup (email and wallet connection) runs on the
+          Sepolia test network. Checkout payments made through the browser
+          extension are real: the extension sends real Ethereum mainnet ETH
+          directly to Bitrefill and receives a real prepaid card in return.
+          Everything below describes the product as it actually runs today,
+          not a future state.
         </p>
       </LegalSection>
 
@@ -46,18 +46,22 @@ export default function DisclosuresPage() {
           </li>
           <li>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
-              Ethereum (currently the Sepolia test network)
+              Ethereum
             </span>{" "}
-            is the network your wallet transactions settle on.
+            is the network your checkout payments settle on. The extension
+            uses mainnet, real ETH, real value. Website-only actions like
+            connecting a wallet during account setup use the Sepolia test
+            network instead.
           </li>
           <li>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
               Bitrefill
             </span>{" "}
-            is the planned provider for issuing the one-time prepaid card used
-            at checkout. The card issuing step is currently a mock while a
-            live Bitrefill account is being set up, and returns obviously
-            fake test card data, never anything resembling a real card.
+            issues the one-time prepaid card used at checkout. The extension
+            pays Bitrefill directly with the ETH you send, Atlus Pay never
+            holds it. Bitrefill has no free test mode for this, so every
+            checkout payment made through the extension is a real
+            transaction.
           </li>
         </ul>
         <p>
@@ -74,11 +78,12 @@ export default function DisclosuresPage() {
 
       <LegalSection title="Cryptocurrency volatility">
         <p>
-          The value of cryptocurrency can change quickly. Atlus Pay converts
-          your crypto to a stablecoin at the moment you confirm a payment,
-          which limits your exposure to that specific transaction, but does
-          not protect the rest of your holdings from market movement before
-          or after.
+          The value of ETH can change quickly. The extension pays Bitrefill
+          in ETH directly, no stablecoin conversion happens along the way,
+          so the exact ETH amount for a given fiat total is fixed at the
+          moment your invoice is created and does not track further price
+          movement during the payment. Your other holdings are unaffected
+          either way, only the ETH you send is spent.
         </p>
       </LegalSection>
 

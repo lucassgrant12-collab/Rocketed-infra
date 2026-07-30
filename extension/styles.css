@@ -1,0 +1,140 @@
+/* styles.css - Atlus Pay overlay
+   Loaded as a content script stylesheet (see manifest.json), so it applies
+   automatically on every page without content.js needing to inject it. */
+
+#atlus-pay-btn {
+  display: block;
+  margin: 8px 0;
+  padding: 10px 16px;
+  background: #171717;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#atlus-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#atlus-overlay-modal {
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 28px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+#atlus-overlay-modal h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #171717;
+}
+
+#atlus-overlay-amount {
+  margin: 12px 0 4px;
+  font-size: 30px;
+  font-weight: 700;
+  color: #171717;
+}
+
+#atlus-overlay-currency-label {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: #737373;
+}
+
+#atlus-overlay-warning {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+#atlus-overlay-balance {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #525252;
+}
+
+.atlus-overlay-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.atlus-overlay-btn {
+  flex: 1;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.atlus-overlay-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#atlus-overlay-confirm-btn {
+  background: #171717;
+  color: #ffffff;
+}
+
+#atlus-overlay-cancel-btn {
+  background: #f5f5f5;
+  color: #171717;
+}
+
+#atlus-overlay-status {
+  margin-top: 16px;
+  min-height: 18px;
+  font-size: 13px;
+  color: #525252;
+}
+
+#atlus-overlay-status.error {
+  color: #dc2626;
+}
+
+#atlus-overlay-status.success {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.atlus-overlay-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  border: 2px solid #d4d4d4;
+  border-top-color: #171717;
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: atlus-spin 0.7s linear infinite;
+}
+
+@keyframes atlus-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

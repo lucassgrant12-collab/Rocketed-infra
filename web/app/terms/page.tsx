@@ -15,11 +15,12 @@ export default function TermsPage() {
           at any point in this process.
         </p>
         <p>
-          Atlus Pay is currently in active development. Transactions
-          currently run on the Sepolia test network with a sandboxed card
-          issuing provider, and no real funds move through the service in
-          this state. These terms apply regardless of whether you are using
-          a test or production deployment.
+          Atlus Pay is currently in active development. Checkout payments
+          made through the browser extension use real Ethereum mainnet ETH
+          and issue a real prepaid card, they are not simulated. Website
+          account setup (email and wallet connection) runs on the Sepolia
+          test network. These terms apply regardless of whether a given
+          part of the product is on a test network or not.
         </p>
       </LegalSection>
 

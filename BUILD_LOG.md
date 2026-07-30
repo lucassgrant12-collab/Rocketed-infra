@@ -210,6 +210,36 @@ This contradicted the feature's own stated design ("a transaction still gets rec
 - Confirmed the transaction-recording bug by testing the actual failure case (`walletAddress: null`) directly against the live route before assuming the fix worked, then re-verified after applying it: `{"stored":true,"emailed":false}`. Reran the full extension flow afterward and confirmed the row actually landed in the live `transactions` table, not just that the endpoint returned success.
 - Cleaned up the test rows this created.
 
+## 2026-07-30 - Real Bitrefill integration, full-page overlay, mainnet payments
+
+A large spec arrived asking for "the real Bitrefill sandbox," no mocks. Before writing code against it, checked its claims against Bitrefill's actual published API docs, and the spec's endpoints, base URL, and "sandbox" concept turned out not to exist. Full research trail in [RESEARCH.md](RESEARCH.md#2026-07-30---real-bitrefill-integration-the-spec-didnt-match-the-real-api-and-the-payment-leg-moves-to-mainnet). Confirmed with the project owner before writing any wallet-sending code that this means real Ethereum mainnet ETH, not testnet, since Bitrefill has no free path to test against at all.
+
+### Built
+
+- [coordinator/server.js](coordinator/server.js) - rewritten against Bitrefill's real, verified endpoints (`/v2/invoices`, `/v2/invoices/:id`, `/orders/:id`, `/products/search`). No mock fallback: missing `BITREFILL_API_KEY` or `BITREFILL_VISA_PRODUCT_ID` fails clearly instead of returning fake data. Enforces `MAX_SPEND_USD` (default $20) before any request reaches Bitrefill.
+- [extension/injected.js](extension/injected.js) - new. A real `<script>` tag content.js injects into the page's own JS world, the only place `window.ethereum` is reliably reachable from a Manifest V3 content script, which runs in an isolated world that doesn't share arbitrary window properties with the page.
+- [extension/content.js](extension/content.js) - rewritten around a full-page overlay (replacing the old small `chrome.windows.create` popup, `popup.html`/`popup.js` deleted) that drives the whole flow: wallet connect, mainnet chain switch, balance display, a real transaction send, waiting on the coordinator, then filling the card. Deliberately does not auto-submit the merchant's form afterward, given real crypto was just spent to get the card.
+- [extension/background.js](extension/background.js) - simplified to a thin relay (`createPayment`, `pollUntilPaid`, `recordTransaction`) now that content.js owns the orchestration instead of the service worker.
+- No `ethers.js` bundled, on purpose: a handful of directly readable EIP-1193 calls plus one explicit BigInt decimal-to-wei conversion felt more auditable for code that moves real funds than a vendored third-party bundle. See `ethToWeiHex`/`weiHexToEthDisplay` in content.js.
+
+### A real bug caught before it shipped
+
+First overlay test run hung indefinitely on wallet connect. Root cause: `injectPageBridge()` appended the `<script>` tag and returned immediately, but loading and executing `injected.js` is asynchronous, so the first `callWallet()` postMessage could be sent before `injected.js`'s listener was registered to receive it, and postMessage doesn't queue for a listener that isn't there yet. Fixed by making `injectPageBridge()` return a promise that resolves on the script's `load` event, and awaiting it before the first wallet call. Confirmed the fix by rerunning the same test, which then completed the full wallet-connect sequence correctly.
+
+### Verified
+
+Everything short of an actual real-money transaction, since that requires real Bitrefill credentials and a funded wallet neither exist yet:
+
+- Full overlay flow against a mocked mainnet wallet (Playwright, same technique used earlier for wallet-connect testing): button click, overlay appears, `eth_requestAccounts` and `eth_getBalance` both round-trip correctly through the injected-script bridge, balance and detected amount both render correctly in the UI.
+- Both real coordinator error paths, exercised through the full UI (not just curl): the `$20` spend cap correctly blocks a `$49.99` test checkout with a clear message in the overlay; with the cap raised, the missing-credentials error surfaces just as clearly. Both leave Confirm re-enabled for retry.
+- Cancel closes the overlay cleanly at any point.
+- The flow correctly stops before ever reaching `eth_sendTransaction`, both error paths trigger inside `create-payment`, before a transaction would ever be requested, confirmed by asserting the mock wallet's `eth_sendTransaction` handler (which throws if called) was never hit.
+
+### Still open
+
+- The Digital Prepaid Visa product's real `redemption_info` format is unconfirmed, see [coordinator/README.md](coordinator/README.md)'s "Unverified" section. The parser is a best guess until a real order is placed.
+- No real `BITREFILL_API_KEY` or `BITREFILL_VISA_PRODUCT_ID` configured yet, so the actual send-transaction-through-to-card-fill path has not been run for real.
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):

@@ -180,3 +180,45 @@ Step 2 above (the user's wallet actually sending crypto) is entirely skipped in 
 - No live Bitrefill account exists yet. Getting one, and understanding their actual fee structure, product catalog (which card denominations/brands they actually support), and settlement-detection mechanism (webhook vs required polling), is unstarted.
 - The "user's wallet sends crypto directly to Bitrefill's payment address" step has no real implementation. This is where an actual on-chain transaction would need to be constructed and signed by the user's connected wallet, currently the flow just assumes it already happened.
 - Prior-art references to Stripe Issuing / Marqeta earlier in this file (the escrow proof-of-payment section, the monetization section) describe reasoning from before this pivot. Left as-is rather than rewritten, since they're an accurate record of what was being considered at the time, but Bitrefill is the current plan, not those.
+
+---
+
+## 2026-07-30 - Real Bitrefill integration: the spec didn't match the real API, and the payment leg moves to mainnet
+
+A detailed integration spec arrived describing "the real Bitrefill sandbox API." Before writing any code against it, the actual claims were checked against Bitrefill's real, published documentation (docs.bitrefill.com). They didn't hold up:
+
+- `api-sandbox.bitrefill.com` doesn't resolve. No separate sandbox host exists.
+- The described endpoints (`POST /v1/invoices` returning `{ payment: { address, amount } }`, later paid invoices including a `card` object with raw number/expiry/CVV) don't match Bitrefill's real API shape at all.
+- Bitrefill's real "test products" (their actual sandbox equivalent) only work with `payment_method: "balance"`, meaning testing anything, even the free test SKUs, requires a real crypto deposit into an account balance first. There is no free, testnet-payable path through Bitrefill at all.
+- No test product resembling a card exists. The real test SKUs are generic gift-card-link/code and phone-refill simulations only.
+
+This was a genuinely useful thing to check before building, since the original spec's assumptions (a free sandbox, testnet crypto acceptance, a single-call invoice-to-card flow) were all wrong, and building against them would have produced code that looked complete but would fail entirely against the real API.
+
+### What's real, verified directly against Bitrefill's docs
+
+- Bitrefill does sell an actual "Digital Prepaid Visa" product, real crypto in, a real usable Visa card number/expiry/CVV out, confirmed on Bitrefill's own product page (not just their API docs).
+- Direct per-order crypto payment is real and doesn't require pre-funding an account balance: `POST https://api-bitrefill.com/v2/invoices` with a `products` array and a `payment_method` (e.g. `"ethereum"`) returns a payment address and amount for that specific order. This is what keeps the non-custodial framing intact, the end user's wallet pays Bitrefill's invoice address directly, Atlus never touches the funds.
+- Order fulfillment detail (`GET /orders/:id`) returns a `redemption_info` field that is free text, not structured card fields. Whether a real Digital Prepaid Visa order's `redemption_info` contains a cleanly parseable card number/expiry/CVV, and in exactly what format, is unconfirmed until a real order is placed. Full detail and the parser's current best-effort approach are in [coordinator/README.md](coordinator/README.md).
+
+### The payment leg has to move to real Ethereum mainnet, not Sepolia
+
+Bitrefill can't detect a payment on a network where the currency has no value, so `payment_method: "ethereum"` almost certainly watches real mainnet. This is a genuine first for this project: every other part, the website's wallet connection, every prior transaction, every disclosure page, has been testnet-only with the explicit framing "no real funds move through this deployment." The extension's payment step is now the one part of Atlus Pay that moves real money, confirmed directly with the project owner before writing the wallet-sending code, given the consequence of getting this wrong. Two safety measures on top of MetaMask's own confirmation screen (the real last check, the user always sees the exact amount before approving):
+
+- `MAX_SPEND_USD` (coordinator-enforced, default $20) rejects an invoice request before it ever reaches Bitrefill.
+- The Bitrefill product_id is never auto-discovered at request time. It's a required, manually-verified env var, so a bad product search match can never silently buy the wrong thing.
+
+### Architecture change: full-page overlay instead of a popup window
+
+The earlier design used a small `chrome.windows.create` popup for payment confirmation. The new spec asked for a full-page overlay injected directly into the checkout page instead, covering the viewport while the payment runs. This also meant retiring the small `popup.html`/`popup.js` window entirely, the whole flow (wallet connect, balance display, confirm, progress states, error handling) now lives in `content.js`, built and torn down as DOM elements on the page itself.
+
+### Why wallet calls go through an injected page-context script
+
+Chrome extension content scripts run in an isolated JS world: they share the DOM with the page but not arbitrary window properties. MetaMask injects `window.ethereum` into the page's own world, which an isolated-world content script can't reliably reach directly. The standard, robust pattern (used by real wallet-interacting extensions) is to inject an actual `<script>` tag that runs in the page's world and can see `window.ethereum`, then talk back to the content script over `window.postMessage`, exactly the same pattern `wallet-bridge.js` already used to talk to the website. `injected.js` is that script.
+
+### ethers.js was dropped, on purpose
+
+The spec asked to bundle `ethers.min.js`. For code that sends real money, a small number of directly readable EIP-1193 calls (`eth_requestAccounts`, `eth_chainId`, `wallet_switchEthereumChain`, `eth_getBalance`, `eth_sendTransaction`) plus one explicit BigInt-based decimal-ETH-to-wei conversion felt more trustworthy than vendoring a large third-party minified bundle blind. Every line that touches the transaction amount is now auditable in `content.js` directly.
+
+### Auto-submit was deliberately left out
+
+The spec mentioned optionally auto-clicking the merchant's "Place Order" button. Given real crypto is now being spent to obtain the card, auto-submitting the merchant's own purchase form on top of that stacks a second real-world consequence (an actual completed purchase) on an automated action. The card fields get filled; final submission stays a manual, visible click the user makes themselves.
