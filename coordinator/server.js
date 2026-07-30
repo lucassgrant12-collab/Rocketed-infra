@@ -7,13 +7,16 @@
 // path, no per-invoice card object). The endpoints, field names, and flow
 // below are the real ones:
 //
-//   POST /v2/invoices           - create an invoice for a specific product,
-//                                  payable directly with crypto (no need to
-//                                  pre-fund an account balance for this).
-//   GET  /v2/invoices/:id       - check invoice/payment status.
-//   GET  /orders/:id            - once an invoice's order is fulfilled,
-//                                  fetch the redemption details.
-//   GET  /products/search?q=... - find a product's real product_id.
+//   POST /v2/invoices              - create an invoice for a specific
+//                                     product, payable directly with
+//                                     crypto (no need to pre-fund an
+//                                     account balance for this).
+//   GET  /v2/invoices/:id          - check invoice/payment status.
+//   GET  /orders/:id               - once an invoice's order is
+//                                     fulfilled, fetch redemption details.
+//   GET  /v2/products/search?q=... - find a product's real product_id.
+//   GET  /v2/products/:id          - a single product's live packages
+//                                     (denominations) and pricing.
 //
 // This moves real money. Two safety measures on top of Bitrefill's own
 // behavior:
@@ -37,7 +40,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const BITREFILL_BASE_URL = "https://api-bitrefill.com";
+const BITREFILL_BASE_URL = "https://api.bitrefill.com";
 const BITREFILL_API_KEY = process.env.BITREFILL_API_KEY;
 const BITREFILL_VISA_PRODUCT_ID = process.env.BITREFILL_VISA_PRODUCT_ID;
 const MAX_SPEND_USD = Number(process.env.MAX_SPEND_USD || 20);
@@ -83,12 +86,41 @@ app.get("/api/bitrefill/search-products", async (req, res) => {
   if (!q) return res.status(400).json({ error: "q query param is required" });
 
   try {
-    const result = await bitrefillRequest(`/products/search?q=${encodeURIComponent(q)}`);
+    const result = await bitrefillRequest(`/v2/products/search?q=${encodeURIComponent(q)}`);
     res.json(result);
   } catch (error) {
     res.status(502).json({ error: error.message });
   }
 });
+
+// The configured Visa product turned out to only come in fixed
+// denominations (e.g. $10/$50/$100/$250), not a freely-set value, so a
+// checkout total has to be rounded up to the smallest package that
+// covers it. Packages are fetched live rather than hardcoded, since
+// prices and availability can change. Cached for a few minutes so every
+// create-payment call doesn't re-fetch.
+let productCache = null;
+let productCacheAt = 0;
+const PRODUCT_CACHE_MS = 5 * 60 * 1000;
+
+async function getProduct() {
+  if (productCache && Date.now() - productCacheAt < PRODUCT_CACHE_MS) {
+    return productCache;
+  }
+  const result = await bitrefillRequest(`/v2/products/${BITREFILL_VISA_PRODUCT_ID}`);
+  productCache = result.data;
+  productCacheAt = Date.now();
+  return productCache;
+}
+
+// Picks the cheapest package that still covers the requested amount.
+// Whatever's left over on the card above the actual checkout total is
+// real money the buyer doesn't get back, this is a genuine limitation of
+// fixed-denomination cards, not something to hide from the caller.
+function selectPackage(packages, amountFiat) {
+  const sorted = [...packages].sort((a, b) => Number(a.value) - Number(b.value));
+  return sorted.find((pkg) => Number(pkg.value) >= amountFiat) ?? null;
+}
 
 // ---------------------------------------------------------------------
 // Atlus's own endpoints. The extension only ever calls these two.
@@ -100,9 +132,13 @@ app.post("/api/atlus/create-payment", async (req, res) => {
   if (!amountFiat || Number(amountFiat) <= 0) {
     return res.status(400).json({ error: "amountFiat is required and must be positive" });
   }
+  // MAX_SPEND_USD is a cap on card face value, interpreted in whatever
+  // currency BITREFILL_VISA_PRODUCT_ID is actually denominated in (AUD
+  // for the currently configured product), not necessarily USD. The name
+  // is legacy from when a US product was assumed.
   if (Number(amountFiat) > MAX_SPEND_USD) {
     return res.status(400).json({
-      error: `amountFiat exceeds the configured spend cap ($${MAX_SPEND_USD}). Raise MAX_SPEND_USD in .env if this is intentional.`,
+      error: `amountFiat exceeds the configured spend cap (${MAX_SPEND_USD}). Raise MAX_SPEND_USD in .env if this is intentional.`,
     });
   }
   if (!BITREFILL_API_KEY || !BITREFILL_VISA_PRODUCT_ID) {
@@ -112,11 +148,24 @@ app.post("/api/atlus/create-payment", async (req, res) => {
   }
 
   try {
+    const product = await getProduct();
+    const selectedPackage = selectPackage(product.packages, Number(amountFiat));
+
+    if (!selectedPackage) {
+      const maxValue = Math.max(...product.packages.map((pkg) => Number(pkg.value)));
+      return res.status(400).json({
+        error: `No card covers ${amountFiat} ${product.currency}. Largest available package is ${maxValue} ${product.currency}.`,
+      });
+    }
+
     const invoice = await bitrefillRequest("/v2/invoices", {
       method: "POST",
       body: JSON.stringify({
-        products: [{ product_id: BITREFILL_VISA_PRODUCT_ID, quantity: 1, value: Number(amountFiat) }],
-        payment_method: "ethereum",
+        products: [{ product_id: BITREFILL_VISA_PRODUCT_ID, quantity: 1, package_id: selectedPackage.id }],
+        // usdc_base, not "ethereum": ETH's invoice price came back as an
+        // unverifiable raw integer with no documented unit, USDC's is a
+        // confirmed, fixed 6-decimal standard. See RESEARCH.md.
+        payment_method: "usdc_base",
       }),
     });
 
@@ -126,6 +175,8 @@ app.post("/api/atlus/create-payment", async (req, res) => {
       paymentAddress: data.payment.address,
       amountCrypto: data.payment.price,
       cryptoCurrency: data.payment.currency,
+      cardValue: selectedPackage.value,
+      cardCurrency: product.currency,
       status: data.status,
     });
   } catch (error) {

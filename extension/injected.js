@@ -3,10 +3,17 @@
 // Runs in the PAGE's own JS world, not content.js's isolated world.
 // content.js injects this via a <script src="..."> tag (see
 // injectPageBridge() in content.js). This is the only reliable way to
-// reach window.ethereum: MetaMask injects it into the page's world, and a
-// Chrome extension's isolated-world content script does not share
-// arbitrary window properties with that world, only postMessage and the
-// DOM itself cross the boundary.
+// reach an injected wallet provider: MetaMask (window.ethereum) and
+// Phantom (window.phantom.ethereum) both inject into the page's own
+// world, and a Chrome extension's isolated-world content script does not
+// share arbitrary window properties with that world, only postMessage
+// and the DOM itself cross the boundary.
+//
+// Deliberately generic: this file only knows how to talk EIP-1193
+// (accounts, chain id, chain switch, eth_call, sendTransaction). It has
+// no idea what USDC or Base or an ERC-20 transfer is, that logic (and the
+// calldata it builds) lives entirely in content.js, so the one file with
+// real wallet access stays as small and auditable as possible.
 //
 // Listens for requests from content.js over window.postMessage, performs
 // the actual window.ethereum.request(...) calls, and posts results back
@@ -14,6 +21,16 @@
 // coordinator at all, its only job is the wallet.
 
 const MARKER = "atlus-pay-wallet-bridge";
+
+function getProvider() {
+  // Prefer Phantom if it's installed, since Phantom users otherwise have
+  // no window.ethereum at all (Phantom's EVM interface lives at its own
+  // namespace, not the shared one). Falls back to whatever's at
+  // window.ethereum (MetaMask, or another wallet using the same slot).
+  if (window.phantom?.ethereum) return window.phantom.ethereum;
+  if (window.ethereum) return window.ethereum;
+  return null;
+}
 
 window.addEventListener("message", async (event) => {
   if (event.source !== window) return;
@@ -41,9 +58,9 @@ window.addEventListener("message", async (event) => {
 });
 
 async function handleAction(action, params) {
-  const ethereum = window.ethereum;
+  const ethereum = getProvider();
   if (!ethereum) {
-    throw new Error("No wallet extension detected (window.ethereum is not available).");
+    throw new Error("No wallet extension detected (MetaMask or Phantom).");
   }
 
   switch (action) {
@@ -55,26 +72,24 @@ async function handleAction(action, params) {
       const chainId = await ethereum.request({ method: "eth_chainId" });
       return { chainId };
     }
-    case "switchToMainnet": {
-      // Ethereum mainnet. Real ETH, real value, this is deliberate: see
-      // RESEARCH.md's note on why the payment leg moved off testnet.
+    case "switchChain": {
       await ethereum.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: "0x1" }],
+        params: [{ chainId: params.chainId }],
       });
-      return { chainId: "0x1" };
+      return { chainId: params.chainId };
     }
-    case "getBalance": {
-      const balance = await ethereum.request({
-        method: "eth_getBalance",
-        params: [params.address, "latest"],
+    case "ethCall": {
+      const result = await ethereum.request({
+        method: "eth_call",
+        params: [{ to: params.to, data: params.data }, "latest"],
       });
-      return { balanceWeiHex: balance };
+      return { result };
     }
     case "sendTransaction": {
       const txHash = await ethereum.request({
         method: "eth_sendTransaction",
-        params: [{ from: params.from, to: params.to, value: params.valueWeiHex }],
+        params: [{ from: params.from, to: params.to, data: params.data, value: params.value ?? "0x0" }],
       });
       return { txHash };
     }

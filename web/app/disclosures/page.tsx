@@ -10,10 +10,10 @@ export default function DisclosuresPage() {
         <p>
           Website account setup (email and wallet connection) runs on the
           Sepolia test network. Checkout payments made through the browser
-          extension are real: the extension sends real Ethereum mainnet ETH
-          directly to Bitrefill and receives a real prepaid card in return.
-          Everything below describes the product as it actually runs today,
-          not a future state.
+          extension are real: the extension sends real USDC on the Base
+          network directly to Bitrefill and receives a real prepaid card in
+          return. Everything below describes the product as it actually
+          runs today, not a future state.
         </p>
       </LegalSection>
 
@@ -46,19 +46,20 @@ export default function DisclosuresPage() {
           </li>
           <li>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
-              Ethereum
+              USDC on Base
             </span>{" "}
-            is the network your checkout payments settle on. The extension
-            uses mainnet, real ETH, real value. Website-only actions like
-            connecting a wallet during account setup use the Sepolia test
-            network instead.
+            is what checkout payments actually settle in, real value, chosen
+            specifically because its unit (a fixed 6 decimal standard) could
+            be independently verified, unlike Bitrefill&rsquo;s ETH pricing.
+            Website-only actions like connecting a wallet during account
+            setup use the Sepolia test network instead.
           </li>
           <li>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
               Bitrefill
             </span>{" "}
             issues the one-time prepaid card used at checkout. The extension
-            pays Bitrefill directly with the ETH you send, Atlus Pay never
+            pays Bitrefill directly with the USDC you send, Atlus Pay never
             holds it. Bitrefill has no free test mode for this, so every
             checkout payment made through the extension is a real
             transaction.
@@ -78,12 +79,12 @@ export default function DisclosuresPage() {
 
       <LegalSection title="Cryptocurrency volatility">
         <p>
-          The value of ETH can change quickly. The extension pays Bitrefill
-          in ETH directly, no stablecoin conversion happens along the way,
-          so the exact ETH amount for a given fiat total is fixed at the
-          moment your invoice is created and does not track further price
-          movement during the payment. Your other holdings are unaffected
-          either way, only the ETH you send is spent.
+          Checkout payments are made directly in USDC, a stablecoin pegged
+          to the US dollar, so the payment itself carries essentially no
+          exchange-rate volatility. That protection only covers what
+          happens inside Atlus Pay: however you acquired USDC in the first
+          place (buying it directly, or converting a more volatile asset
+          elsewhere) is outside Atlus Pay&rsquo;s visibility and control.
         </p>
       </LegalSection>
 

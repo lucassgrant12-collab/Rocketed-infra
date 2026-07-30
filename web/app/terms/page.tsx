@@ -16,11 +16,11 @@ export default function TermsPage() {
         </p>
         <p>
           Atlus Pay is currently in active development. Checkout payments
-          made through the browser extension use real Ethereum mainnet ETH
-          and issue a real prepaid card, they are not simulated. Website
-          account setup (email and wallet connection) runs on the Sepolia
-          test network. These terms apply regardless of whether a given
-          part of the product is on a test network or not.
+          made through the browser extension use real USDC on the Base
+          network and issue a real prepaid card, they are not simulated.
+          Website account setup (email and wallet connection) runs on the
+          Sepolia test network. These terms apply regardless of whether a
+          given part of the product is on a test network or not.
         </p>
       </LegalSection>
 

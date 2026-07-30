@@ -222,3 +222,50 @@ The spec asked to bundle `ethers.min.js`. For code that sends real money, a smal
 ### Auto-submit was deliberately left out
 
 The spec mentioned optionally auto-clicking the merchant's "Place Order" button. Given real crypto is now being spent to obtain the card, auto-submitting the merchant's own purchase form on top of that stacks a second real-world consequence (an actual completed purchase) on an automated action. The card fields get filled; final submission stays a manual, visible click the user makes themselves.
+
+### Fixed card denominations, and the real fix: a shared liquidity pool (not built yet)
+
+The configured product (`the-visa-digital-gift-card-australia`, the only Visa product this Bitrefill account can actually see, see the entry below on why it's AUD not USD) only comes in fixed packages: $10/$50/$100/$250. A checkout total almost never lands exactly on one of those, so covering it means buying a package sized up to the nearest one that covers it, leaving unspent value on the card.
+
+The shape of the real fix, to build once the base single-card flow is proven against a real order, not before:
+
+1. **A user only ever pays crypto for the exact amount they need**, not the card's full face value. Buying a $250 card for a $110 order means the user pays for $110 in crypto; Atlus fronts the rest of the card's cost and gets it back from the pool later.
+2. **The $140 left on that card doesn't get wasted, it joins a shared pool**, available to any future order across any user, not scoped to the original buyer's account. A later $140 order gets allocated that exact card directly, no new Bitrefill purchase, no new crypto spent at all.
+3. **At scale, this converges**: as more transactions happen, the pool naturally accumulates cards across a spread of remaining balances, and a growing share of orders get matched against existing inventory instead of requiring a new purchase. The "waste" from any one oversized purchase becomes the next several orders' free inventory.
+
+This is real infrastructure, not a tweak: a pool table (card id, remaining balance, currency), a matching algorithm (closest-fit existing card, else buy new), and genuine refund logic, sending the unused crypto difference back to the paying user's wallet, which is its own real-money operation with its own failure modes (gas costs on the refund transaction, what happens if the refund itself fails, etc.) and needs the same level of care this file has been giving every other real-money path. Deliberately sequenced after the current single-card flow is verified against one real transaction, not before, so a bug in the foundation doesn't get built on top of.
+
+---
+
+## 2026-07-30 - Payment currency switched from ETH to USDC: the ETH unit couldn't be verified
+
+While preparing for the first real test, `payment.price` in a real Bitrefill invoice response for `payment_method: "ethereum"` came back as `3769` with `currency: "ETH"`. That number doesn't resolve to a sane amount under any standard Ethereum unit: not wei (18 decimals, ~$0.00000000000004), not gwei (9 decimals, ~$0.00001). Bitrefill's own API docs don't document the unit for this field at all (confirmed by checking `docs.bitrefill.com/reference/post_invoices.md` directly, the schema only shows an undocumented `"type": "number"`).
+
+### How this was actually resolved, not guessed
+
+Created the same $10 AUD card invoice with two other payment methods that have universally fixed, well-known decimal standards, independent of anything Bitrefill documents:
+
+- `payment_method: "usdc_base"` returned `price: 7190000`, `currency: "USDC"`. USDC is fixed at 6 decimals by the token standard itself. `7190000 / 10^6 = 7.19 USD`, a sane price for a $10 AUD card.
+- `payment_method: "bitcoin"` returned `price: 11153`, `currency: "BTC"`. Satoshis are BTC's fixed 8-decimal standard. `11153 / 10^8 ≈ 0.00011153 BTC`, roughly $7.81 USD at a plausible BTC price, the same ballpark as the USDC figure.
+
+Both independently confirm the real pattern: `price` is in the currency's own smallest standard unit. ETH should follow the same rule, and doesn't produce anything sane under it, which points at either an API inconsistency specific to how Bitrefill quotes ETH, or a unit this investigation didn't find documented anywhere. Rather than trust a guess with real money, ETH was dropped as a payment option entirely.
+
+### Decision: USDC on Base
+
+- **Unit is provably correct**, not inferred: 6 decimals is the fixed ERC-20 standard for USDC, not something specific to Bitrefill's API that could be wrong or undocumented.
+- **Stays inside the already-built and already-tested wallet stack**: MetaMask/Phantom, `window.ethereum`-shaped calls, no new wallet integration. The only real changes were the chain (Base, `0x2105`, instead of mainnet) and the transaction shape (an ERC-20 `transfer()` call instead of a native value transfer).
+- The real USDC contract address on Base (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`) was verified against two independent sources, Circle's own contract address documentation and BaseScan's verified listing, before being hardcoded anywhere, given a wrong contract address here would mean a transaction that either fails outright or (worse) succeeds against the wrong contract.
+- Native Bitcoin was considered and ruled out for the *payment* leg specifically (as opposed to the unit-verification test above, which only needed to create an unpaid invoice, not send anything): it requires an entirely separate wallet integration, no smart contracts, no `window.ethereum`-equivalent standard, no MetaMask support at all, a materially bigger and untested change to make before a first real transaction than switching to USDC.
+
+### A related idea, considered and explicitly ruled out for now: swap-then-pay in one transaction
+
+A separate proposal (sourced from another AI, not independently verified before being brought here) described letting a user pay in *any* crypto, atomically swapped to USDC via a DEX aggregator and forwarded to Bitrefill in a single signed transaction, hidden behind one MetaMask popup. Checked this before building anything against it, the same way the original fictional Bitrefill spec was checked:
+
+- **It cannot work for native Bitcoin at all.** DEX aggregators (1inch, ParaSwap, etc.) operate on EVM chains via smart contracts. Bitcoin has no smart contract capability compatible with this and MetaMask cannot sign a Bitcoin transaction under any circumstance. This isn't unverified, it's a category error, conflating native BTC with an EVM-wrapped representation of it (WBTC).
+- **For genuinely EVM-compatible assets** (ETH, WBTC, other ERC-20s), an atomic swap-and-forward is technically real, but requires either a custom smart contract (real audit surface, since it would briefly hold swapped funds) or ERC-4337 account abstraction (substantial, still-maturing infrastructure). Neither is a small addition.
+
+Given the base single-currency flow hadn't been proven against one real transaction yet, adding a DEX aggregator and a new smart contract on top was the wrong sequencing. Logged here as a real future direction, explicitly scoped to EVM assets only, not attempted now.
+
+### Also fixed alongside this: Phantom couldn't connect at all
+
+`injected.js` only checked `window.ethereum`. Phantom's EVM interface lives at `window.phantom.ethereum` instead (the same discovery already made for the website's own wallet connect, see the Phantom wallet entries earlier in this file, but the extension's wallet bridge hadn't picked up the same fix). A Phantom-only user (no MetaMask installed) would hit "No wallet extension detected" with no way to proceed. Fixed by checking `window.phantom?.ethereum` first, falling back to `window.ethereum`. Verified with a mock that set only `window.phantom`, no `window.ethereum` at all, and confirmed the full flow (connect, chain switch, balance, transaction construction) worked identically to the MetaMask path.

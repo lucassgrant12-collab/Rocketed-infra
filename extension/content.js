@@ -2,14 +2,24 @@
 //
 // Runs on every page (see manifest.json). Detects a checkout form, injects
 // a "Pay with Atlus" button, and on click shows a full-page overlay that
-// drives the whole payment: wallet connect, a real Ethereum mainnet
-// payment to Bitrefill, waiting for the card to be issued, then filling
-// it into the page's own form fields. The user never sees the card
-// details themselves, only progress messages.
+// drives the whole payment: wallet connect, a real USDC payment on Base
+// to Bitrefill, waiting for the card to be issued, then filling it into
+// the page's own form fields. The user never sees the card details
+// themselves, only progress messages.
 //
 // Real money moves in this flow. See injected.js for why wallet calls go
 // through a separate page-world script instead of touching
 // window.ethereum from here directly.
+//
+// USDC was chosen over native ETH after ETH's payment amount turned out
+// to be ambiguous: Bitrefill's invoice response returns a raw integer
+// with no documented unit, and no standard Ethereum denomination (wei,
+// gwei) produced a plausible dollar value for it. USDC's unit is not
+// something either of us has to guess at: it's a fixed, universal
+// 6-decimal ERC-20 standard, and cross-checking against Bitcoin's
+// (also fixed, 8-decimal satoshi) response confirmed the pattern: price
+// is in the currency's own smallest standard unit. See RESEARCH.md for
+// the full investigation.
 
 const CARD_NUMBER_SELECTORS = [
   'input[autocomplete="cc-number"]',
@@ -203,22 +213,50 @@ function requestFromBackground(action, payload) {
   });
 }
 
-// Precise decimal ETH <-> wei conversion via BigInt, no floating point.
-// Getting this wrong moves the wrong amount of real money, so it's kept
-// as one small, directly readable function rather than pulled in from a
-// third-party library.
-function ethToWeiHex(ethAmountStr) {
-  const [wholeRaw, fractionRaw = ""] = String(ethAmountStr).split(".");
-  const whole = wholeRaw || "0";
-  const fraction = (fractionRaw + "0".repeat(18)).slice(0, 18);
-  const wei = BigInt(whole) * 10n ** 18n + BigInt(fraction || "0");
-  return "0x" + wei.toString(16);
+// ---------------------------------------------------------------------
+// USDC on Base: chain id, contract address, and minimal ERC-20 ABI
+// encoding. No ethers.js (see RESEARCH.md), just the two selectors and
+// the encoding rules the ERC-20 standard itself defines, which don't
+// change per token and are safe to hardcode.
+// ---------------------------------------------------------------------
+
+const BASE_CHAIN_ID = "0x2105"; // 8453 decimal
+// Verified directly against Circle's own contract address docs and
+// cross-checked on BaseScan before use, this is native USDC on Base, not
+// the older bridged USDbC token (a real, easy mix-up with a different
+// contract address).
+const USDC_ADDRESS_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const USDC_DECIMALS = 6;
+
+const ERC20_BALANCE_OF_SELECTOR = "0x70a08231";
+const ERC20_TRANSFER_SELECTOR = "0xa9059cbb";
+
+function encodeAddressParam(address) {
+  return address.toLowerCase().replace("0x", "").padStart(64, "0");
 }
 
-function weiHexToEthDisplay(weiHex) {
-  const wei = BigInt(weiHex);
-  const whole = wei / 10n ** 18n;
-  const fraction = (wei % 10n ** 18n).toString().padStart(18, "0").slice(0, 6);
+function encodeUint256Param(value) {
+  return BigInt(value).toString(16).padStart(64, "0");
+}
+
+function erc20BalanceOfCalldata(address) {
+  return ERC20_BALANCE_OF_SELECTOR + encodeAddressParam(address);
+}
+
+function erc20TransferCalldata(to, amountBaseUnits) {
+  return ERC20_TRANSFER_SELECTOR + encodeAddressParam(to) + encodeUint256Param(amountBaseUnits);
+}
+
+// Formats a raw base-unit integer (as returned by eth_call, or as sent by
+// the coordinator) into a human-readable decimal string for display only,
+// never used for anything that determines how much actually gets sent.
+function formatTokenAmount(baseUnits, decimals) {
+  // eth_call can return a bare "0x" for an all-zero result on some nodes,
+  // which BigInt() rejects outright rather than treating as zero.
+  const value = baseUnits === "0x" || !baseUnits ? 0n : BigInt(baseUnits);
+  const divisor = 10n ** BigInt(decimals);
+  const whole = value / divisor;
+  const fraction = (value % divisor).toString().padStart(decimals, "0");
   return `${whole}.${fraction}`;
 }
 
@@ -233,9 +271,9 @@ function buildOverlay(amountUsd) {
     <div id="atlus-overlay-modal">
       <h2>Pay with Atlus</h2>
       <div id="atlus-overlay-amount">$${amountUsd}</div>
-      <p id="atlus-overlay-currency-label">Paying with Ethereum (mainnet)</p>
+      <p id="atlus-overlay-currency-label">Paying with USDC (Base)</p>
       <div id="atlus-overlay-warning">
-        This sends real ETH from your connected wallet to purchase a real prepaid card. Confirm the exact amount shown in your wallet before approving.
+        This sends real USDC from your connected wallet to purchase a real prepaid card. Confirm the exact amount shown in your wallet before approving.
       </div>
       <div id="atlus-overlay-balance">Connecting wallet...</div>
       <div class="atlus-overlay-actions">
@@ -298,13 +336,16 @@ async function onPayClick() {
     if (!account) throw new Error("No wallet account was returned.");
 
     const { chainId } = await callWallet("getChainId");
-    if (chainId !== "0x1") {
-      balanceEl.textContent = "Switching to Ethereum mainnet...";
-      await callWallet("switchToMainnet");
+    if (chainId !== BASE_CHAIN_ID) {
+      balanceEl.textContent = "Switching to Base...";
+      await callWallet("switchChain", { chainId: BASE_CHAIN_ID });
     }
 
-    const { balanceWeiHex } = await callWallet("getBalance", { address: account });
-    balanceEl.textContent = `Wallet balance: ${weiHexToEthDisplay(balanceWeiHex)} ETH`;
+    const { result: balanceHex } = await callWallet("ethCall", {
+      to: USDC_ADDRESS_BASE,
+      data: erc20BalanceOfCalldata(account),
+    });
+    balanceEl.textContent = `Wallet balance: ${formatTokenAmount(balanceHex, USDC_DECIMALS)} USDC`;
     confirmBtn.disabled = false;
   } catch (error) {
     balanceEl.textContent = "Could not connect to wallet.";
@@ -318,20 +359,62 @@ async function onPayClick() {
 async function runPayment(overlay, amountUsd, account) {
   const confirmBtn = overlay.querySelector("#atlus-overlay-confirm-btn");
   const cancelBtn = overlay.querySelector("#atlus-overlay-cancel-btn");
+  const balanceEl = overlay.querySelector("#atlus-overlay-balance");
+  confirmBtn.disabled = true;
+  cancelBtn.disabled = true;
+
+  let invoice;
+  try {
+    setProgress(overlay, "Creating payment...");
+    invoice = await requestFromBackground("createPayment", { amountFiat: Number(amountUsd) });
+    if (invoice.error) throw new Error(invoice.error);
+  } catch (error) {
+    setError(overlay, error.message);
+    confirmBtn.disabled = false;
+    cancelBtn.disabled = false;
+    return;
+  }
+
+  // Fixed-denomination cards (e.g. $10/$50/$100/$250) can cost more than
+  // the actual checkout total, the difference is real money that isn't
+  // refunded. That has to be an explicit, visible checkpoint before any
+  // transaction is sent, not buried in a progress message.
+  const cardValue = Number(invoice.cardValue);
+  const checkoutTotal = Number(amountUsd);
+  if (invoice.cardCurrency && cardValue > checkoutTotal) {
+    const difference = (cardValue - checkoutTotal).toFixed(2);
+    balanceEl.textContent = `This purchases a ${cardValue} ${invoice.cardCurrency} card for a ${checkoutTotal} checkout. The ${difference} ${invoice.cardCurrency} difference is not refunded.`;
+  } else if (invoice.cardCurrency) {
+    balanceEl.textContent = `Card value: ${cardValue} ${invoice.cardCurrency}.`;
+  }
+
+  setProgress(overlay, "");
+  confirmBtn.textContent = "Send Payment";
+  confirmBtn.disabled = false;
+  cancelBtn.disabled = false;
+
+  const proceed = await new Promise((resolve) => {
+    confirmBtn.addEventListener("click", () => resolve(true), { once: true });
+    cancelBtn.addEventListener("click", () => resolve(false), { once: true });
+  });
+
+  if (!proceed) {
+    removeOverlay(overlay);
+    return;
+  }
+
   confirmBtn.disabled = true;
   cancelBtn.disabled = true;
 
   try {
-    setProgress(overlay, "Creating payment...");
-    const invoice = await requestFromBackground("createPayment", { amountFiat: Number(amountUsd) });
-    if (invoice.error) throw new Error(invoice.error);
-
     setProgress(overlay, "Confirm the transaction in your wallet...");
-    const valueWeiHex = ethToWeiHex(invoice.amountCrypto);
+    // invoice.amountCrypto is already a raw USDC base-unit integer (e.g.
+    // 7190000 = 7.19 USDC), confirmed directly against Bitrefill's real
+    // response, not something this file needs to convert from a decimal.
     const { txHash } = await callWallet("sendTransaction", {
       from: account,
-      to: invoice.paymentAddress,
-      valueWeiHex,
+      to: USDC_ADDRESS_BASE,
+      data: erc20TransferCalldata(invoice.paymentAddress, Math.round(invoice.amountCrypto)),
     });
 
     setProgress(overlay, "Payment sent. Waiting for confirmation...");

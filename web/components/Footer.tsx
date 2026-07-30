@@ -43,7 +43,7 @@ export function Footer() {
         <p className="mt-8 text-xs text-neutral-400 dark:text-neutral-600">
           &copy; {year} Atlus Pay. Website account setup runs on the Sepolia
           test network. Checkout payments made through the extension use
-          real Ethereum mainnet ETH and issue a real prepaid card. See{" "}
+          real USDC on the Base network and issue a real prepaid card. See{" "}
           <Link href="/disclosures" className="underline">
             Risk & Third-Party Disclosures
           </Link>
