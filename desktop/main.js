@@ -6,13 +6,17 @@
 // extension, no extension store review, no third-party policy gatekeeper.
 //
 // Architecture:
-//   - The main window's top strip is the "shell" (shell/index.html): a
-//     minimal address bar, not part of the embedded browsing content.
-//   - A BrowserView below it shows whatever site the user navigates to.
-//     inject/checkout.js is attached to it as a preload script, so it
-//     runs on every page loaded there, the same job content.js does in
-//     the browser extension: detect a checkout form, inject the button,
-//     drive the full-page overlay.
+//   - The main window's top strip is the "shell" (shell/index.html): just
+//     back/forward/reload/home and a settings button, not part of the
+//     embedded browsing content. No address bar, see shell/shell.js for
+//     why - Atlus isn't a general browser.
+//   - A BrowserView below it starts on Atlus's own curated home screen
+//     (home/index.html, a searchable grid of retailers) and navigates to
+//     a real retailer's site once the user picks one. inject/checkout.js
+//     is attached to it as a preload script, so it runs on every page
+//     loaded there, the same job content.js does in the browser
+//     extension: detect a checkout form, inject the button, drive the
+//     full-page overlay.
 //   - WalletConnect's SignClient runs here in the main process (it's a
 //     Node.js-compatible SDK, no need to bundle it for a browser
 //     context). checkout.js talks to it over ipcRenderer/ipcMain, it can
@@ -65,7 +69,7 @@ function createWindow() {
 
   mainWindow.setBrowserView(browserView);
   layoutBrowserView();
-  browserView.webContents.loadURL("https://www.google.com");
+  goHome();
 
   mainWindow.on("resize", layoutBrowserView);
 
@@ -84,14 +88,11 @@ function layoutBrowserView() {
 }
 
 // ---------------------------------------------------------------------
-// Shell IPC: the address bar UI controlling the BrowserView
+// Shell IPC: the top strip's back/forward/reload/home controls. No
+// free-text navigate handler, Atlus isn't a general browser, see
+// shell/shell.js for why. The only way into a site is a retailer card on
+// the home screen (a plain link) or a link on the site you're already on.
 // ---------------------------------------------------------------------
-
-ipcMain.handle("shell:navigate", (event, rawInput) => {
-  const url = normalizeAddress(rawInput);
-  browserView.webContents.loadURL(url);
-  return url;
-});
 
 ipcMain.handle("shell:back", () => {
   if (browserView.webContents.navigationHistory.canGoBack()) {
@@ -109,13 +110,12 @@ ipcMain.handle("shell:reload", () => {
   browserView.webContents.reload();
 });
 
-function normalizeAddress(input) {
-  const trimmed = input.trim();
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  if (/^[\w-]+(\.[\w-]+)+/.test(trimmed) && !trimmed.includes(" ")) {
-    return `https://${trimmed}`;
-  }
-  return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+ipcMain.handle("shell:home", () => {
+  goHome();
+});
+
+function goHome() {
+  browserView.webContents.loadFile(path.join(__dirname, "home", "index.html"));
 }
 
 // ---------------------------------------------------------------------

@@ -18,16 +18,29 @@
 //   GET  /v2/products/:id          - a single product's live packages
 //                                     (denominations) and pricing.
 //
-// This moves real money. Two safety measures on top of Bitrefill's own
+// This moves real money. Safety measures on top of Bitrefill's own
 // behavior:
 //   - MAX_SPEND_USD caps what any single invoice can be created for.
-//   - The Visa card product_id is never guessed or auto-discovered at
-//     request time. It's a required env var you set once, after looking
-//     it up yourself (see README), so a bad search match can never
-//     silently buy the wrong product.
+//   - A retailer's product_id is never guessed or fuzzy-matched at
+//     request time. Every entry in retailers.js was looked up and checked
+//     against the live API by a person once, so a bad search match can
+//     never silently buy the wrong product. See retailers.js.
+//
+// The card-issuing model changed after the first version of this file:
+// it used to always buy a single configured Visa gift card, rounding the
+// checkout total up to the nearest fixed denomination. That Visa card
+// turned out to be unusable for Atlus's purposes (see RESEARCH.md's
+// 2026-07-31 entries): the AU product requires app-based activation with
+// an Australian phone number, no plain card number at all, and the real
+// USA product is blocked for this account. The replacement model buys a
+// merchant-specific gift card for whatever retailer the user is actually
+// on, using an exact custom amount wherever the product supports one
+// (most do, see retailers.js and RESEARCH.md's survey), only falling
+// back to rounding up when a product is fixed-denomination only.
 
 const express = require("express");
 require("dotenv").config();
+const { RETAILERS, findByDomain } = require("./retailers");
 
 const app = express();
 app.use(express.json());
@@ -42,17 +55,11 @@ app.use((req, res, next) => {
 
 const BITREFILL_BASE_URL = "https://api.bitrefill.com";
 const BITREFILL_API_KEY = process.env.BITREFILL_API_KEY;
-const BITREFILL_VISA_PRODUCT_ID = process.env.BITREFILL_VISA_PRODUCT_ID;
 const MAX_SPEND_USD = Number(process.env.MAX_SPEND_USD || 20);
 
 if (!BITREFILL_API_KEY) {
   console.warn(
     "BITREFILL_API_KEY is not set. /api/atlus/create-payment will fail until it's added to coordinator/.env."
-  );
-}
-if (!BITREFILL_VISA_PRODUCT_ID) {
-  console.warn(
-    "BITREFILL_VISA_PRODUCT_ID is not set. Look up the real product_id (see README) and add it to coordinator/.env before creating a real invoice."
   );
 }
 
@@ -93,24 +100,22 @@ app.get("/api/bitrefill/search-products", async (req, res) => {
   }
 });
 
-// The configured Visa product turned out to only come in fixed
-// denominations (e.g. $10/$50/$100/$250), not a freely-set value, so a
-// checkout total has to be rounded up to the smallest package that
-// covers it. Packages are fetched live rather than hardcoded, since
-// prices and availability can change. Cached for a few minutes so every
-// create-payment call doesn't re-fetch.
-let productCache = null;
-let productCacheAt = 0;
+// Products are fetched live rather than hardcoded (prices, stock, and
+// ranges can change), but now keyed per product_id instead of a single
+// global Visa product, since a payment can be for any retailer in
+// retailers.js. Cached for a few minutes so repeated calls for the same
+// product don't re-fetch every time.
+const productCache = new Map(); // product_id -> { data, at }
 const PRODUCT_CACHE_MS = 5 * 60 * 1000;
 
-async function getProduct() {
-  if (productCache && Date.now() - productCacheAt < PRODUCT_CACHE_MS) {
-    return productCache;
+async function getProduct(productId) {
+  const cached = productCache.get(productId);
+  if (cached && Date.now() - cached.at < PRODUCT_CACHE_MS) {
+    return cached.data;
   }
-  const result = await bitrefillRequest(`/v2/products/${BITREFILL_VISA_PRODUCT_ID}`);
-  productCache = result.data;
-  productCacheAt = Date.now();
-  return productCache;
+  const result = await bitrefillRequest(`/v2/products/${productId}`);
+  productCache.set(productId, { data: result.data, at: Date.now() });
+  return result.data;
 }
 
 // Picks the cheapest package that still covers the requested amount.
@@ -123,45 +128,76 @@ function selectPackage(packages, amountFiat) {
 }
 
 // ---------------------------------------------------------------------
-// Atlus's own endpoints. The extension only ever calls these two.
+// Retailer catalog: what the desktop app's home screen lists, and how a
+// checkout page gets matched to a real product_id.
+// ---------------------------------------------------------------------
+
+app.get("/api/atlus/retailers", (req, res) => {
+  res.json({ retailers: RETAILERS });
+});
+
+app.get("/api/atlus/match", (req, res) => {
+  const domain = req.query.domain;
+  if (!domain) return res.status(400).json({ error: "domain query param is required" });
+  res.json({ retailer: findByDomain(domain) });
+});
+
+// ---------------------------------------------------------------------
+// Atlus's own payment endpoints.
 // ---------------------------------------------------------------------
 
 app.post("/api/atlus/create-payment", async (req, res) => {
-  const { amountFiat } = req.body ?? {};
+  const { amountFiat, productId } = req.body ?? {};
 
   if (!amountFiat || Number(amountFiat) <= 0) {
     return res.status(400).json({ error: "amountFiat is required and must be positive" });
   }
-  // MAX_SPEND_USD is a cap on card face value, interpreted in whatever
-  // currency BITREFILL_VISA_PRODUCT_ID is actually denominated in (AUD
-  // for the currently configured product), not necessarily USD. The name
-  // is legacy from when a US product was assumed.
+  if (!productId) {
+    return res.status(400).json({ error: "productId is required (see /api/atlus/retailers)" });
+  }
   if (Number(amountFiat) > MAX_SPEND_USD) {
     return res.status(400).json({
       error: `amountFiat exceeds the configured spend cap (${MAX_SPEND_USD}). Raise MAX_SPEND_USD in .env if this is intentional.`,
     });
   }
-  if (!BITREFILL_API_KEY || !BITREFILL_VISA_PRODUCT_ID) {
-    return res.status(500).json({
-      error: "Coordinator is missing BITREFILL_API_KEY or BITREFILL_VISA_PRODUCT_ID. See README.",
-    });
+  if (!BITREFILL_API_KEY) {
+    return res.status(500).json({ error: "Coordinator is missing BITREFILL_API_KEY. See README." });
   }
 
   try {
-    const product = await getProduct();
-    const selectedPackage = selectPackage(product.packages, Number(amountFiat));
+    const product = await getProduct(productId);
+    const requested = Number(amountFiat);
 
-    if (!selectedPackage) {
-      const maxValue = Math.max(...product.packages.map((pkg) => Number(pkg.value)));
-      return res.status(400).json({
-        error: `No card covers ${amountFiat} ${product.currency}. Largest available package is ${maxValue} ${product.currency}.`,
-      });
+    // Ranged products take an exact value, no rounding, no waste. Only
+    // fall back to picking a fixed package when the product has no range
+    // at all, or the requested amount falls outside it.
+    const inRange = product.range && requested >= Number(product.range.min) && requested <= Number(product.range.max);
+
+    let productLine;
+    let cardValue;
+    let exact;
+
+    if (inRange) {
+      productLine = { product_id: productId, quantity: 1, value: requested.toFixed(2) };
+      cardValue = requested;
+      exact = true;
+    } else {
+      const selectedPackage = product.packages?.length ? selectPackage(product.packages, requested) : null;
+      if (!selectedPackage) {
+        const ceiling = product.range?.max ?? Math.max(...(product.packages || []).map((pkg) => Number(pkg.value)));
+        return res.status(400).json({
+          error: `No card covers ${amountFiat} ${product.currency}. Largest available is ${ceiling} ${product.currency}.`,
+        });
+      }
+      productLine = { product_id: productId, quantity: 1, package_id: selectedPackage.id };
+      cardValue = selectedPackage.value;
+      exact = false;
     }
 
     const invoice = await bitrefillRequest("/v2/invoices", {
       method: "POST",
       body: JSON.stringify({
-        products: [{ product_id: BITREFILL_VISA_PRODUCT_ID, quantity: 1, package_id: selectedPackage.id }],
+        products: [productLine],
         // usdc_base, not "ethereum": ETH's invoice price came back as an
         // unverifiable raw integer with no documented unit, USDC's is a
         // confirmed, fixed 6-decimal standard. See RESEARCH.md.
@@ -175,8 +211,9 @@ app.post("/api/atlus/create-payment", async (req, res) => {
       paymentAddress: data.payment.address,
       amountCrypto: data.payment.price,
       cryptoCurrency: data.payment.currency,
-      cardValue: selectedPackage.value,
+      cardValue,
       cardCurrency: product.currency,
+      exact,
       status: data.status,
     });
   } catch (error) {
@@ -204,21 +241,9 @@ app.post("/api/atlus/poll-until-paid", async (req, res) => {
         }
 
         const order = await bitrefillRequest(`/orders/${orderId}`);
-        const card = parseCardFromRedemptionInfo(order.data.redemption_info);
+        const redemption = parseRedemption(order.data.redemption_info);
 
-        if (!card) {
-          // The exact format of redemption_info for a Digital Prepaid Visa
-          // order hasn't been confirmed against a real fulfilled order yet
-          // (see README's "unverified" note). Returning the raw text lets
-          // whoever's testing this see exactly what came back and fix the
-          // parser to match, instead of failing silently.
-          return res.status(502).json({
-            error: "Could not parse card details from redemption_info",
-            redemptionInfo: order.data.redemption_info,
-          });
-        }
-
-        return res.json({ status: "paid", card });
+        return res.json({ status: "paid", redemption });
       }
 
       if (data.status === "expired" || data.status === "cancelled") {
@@ -234,26 +259,42 @@ app.post("/api/atlus/poll-until-paid", async (req, res) => {
   }
 });
 
-// Best-effort parser for redemption_info, which Bitrefill's own docs show
-// as free text ("To redeem this gift card go to example.com and copy paste
-// your PIN code"), not structured card fields. This has not been verified
-// against a real Digital Prepaid Visa order's actual redemption_info
-// content, only against the generic example in Bitrefill's docs. Update
-// these patterns once a real order's format is known.
-function parseCardFromRedemptionInfo(text) {
-  if (!text) return null;
+// Best-effort parser for redemption_info, which Bitrefill's own docs
+// describe as free text that varies per retailer, not a fixed structured
+// format: a Visa-style card gives a 16-digit number/expiry/CVV, while a
+// store gift card (Starbucks, Target, etc, the common case for the
+// retailer catalog in retailers.js) is usually a single alphanumeric code
+// or a number+PIN pair meant to be concatenated into one string, per
+// Bitrefill's own help docs. None of this has been confirmed against a
+// real fulfilled order for any specific retailer yet (see RESEARCH.md).
+// `raw` is always returned alongside whatever got parsed, specifically so
+// the overlay can show it as a copy-paste fallback when a checkout page
+// has no field this can confidently auto-fill, since there's no
+// autocomplete-token equivalent for gift-card fields the way there is for
+// credit-card fields, unreliable detection is expected here, not an edge
+// case.
+function parseRedemption(text) {
+  if (!text) return { kind: "unknown", raw: "" };
 
   const numberMatch = text.match(/\b(\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4})\b/);
   const expiryMatch = text.match(/\b(0[1-9]|1[0-2])\s*\/\s*(\d{2}|\d{4})\b/);
   const cvvMatch = text.match(/\bCVV\D{0,5}(\d{3,4})\b/i);
 
-  if (!numberMatch || !expiryMatch || !cvvMatch) return null;
+  if (numberMatch && expiryMatch && cvvMatch) {
+    return {
+      kind: "creditcard",
+      raw: text,
+      number: numberMatch[1].replace(/[\s-]/g, ""),
+      expiry: `${expiryMatch[1]}/${expiryMatch[2].slice(-2)}`,
+      cvv: cvvMatch[1],
+    };
+  }
 
-  return {
-    number: numberMatch[1].replace(/[\s-]/g, ""),
-    expiry: `${expiryMatch[1]}/${expiryMatch[2].slice(-2)}`,
-    cvv: cvvMatch[1],
-  };
+  const codeMatch = text.match(/\b([A-Z0-9]{6,20})\b/i);
+  const pinMatch = text.match(/\bPIN\D{0,6}(\d{3,8})\b/i);
+  const code = codeMatch ? codeMatch[1] + (pinMatch ? pinMatch[1] : "") : null;
+
+  return { kind: code ? "code" : "unknown", raw: text, code };
 }
 
 const PORT = process.env.PORT || 3001;

@@ -6,14 +6,18 @@
 // extension/content.js does in the browser extension version. Detects a
 // checkout form, injects a "Pay with Atlus" button, and on click shows a
 // full-page overlay that connects a wallet via WalletConnect (a QR code,
-// not an injected provider, see README for why), sends a real USDC
-// payment on Base to Bitrefill, waits for the card, then fills it in.
+// not an injected provider, see README for why), buys a real gift card
+// for whatever retailer the user is actually on (see
+// coordinator/retailers.js), pays for it with real USDC on Base, then
+// fills the resulting code back into the checkout page.
 //
-// Ported directly from extension/content.js. The checkout detection,
-// card fill, overlay UI, and ERC-20 calldata logic are unchanged, only
-// the wallet connection (WalletConnect instead of an injected provider)
-// and the coordinator/website calls (direct fetch instead of relaying
-// through a service worker) are different. See RESEARCH.md for why.
+// Originally ported directly from extension/content.js, since diverged:
+// the card-issuing model changed from a single fixed-denomination Visa
+// card to a per-retailer gift card matched by domain, with an exact
+// custom amount wherever the product supports one (most do). See
+// RESEARCH.md's 2026-07-31 entries for why. The overlay UI, ERC-20
+// calldata encoding, and WalletConnect flow are still unchanged from that
+// port.
 //
 // This file is both privileged (it's a preload script, so require()
 // works, unlike a normal web page) and shares the DOM/window of whatever
@@ -29,6 +33,30 @@ const COORDINATOR_URL = "http://localhost:3001";
 const WEBSITE_URL = "http://localhost:3000";
 const BASE_RPC_URL = "https://mainnet.base.org"; // Base's official public RPC
 
+// Most retailers in retailers.js issue their own store gift card, not a
+// Visa-network card, once Atlus pays for it. Those redeem through a
+// "gift card / promo code" field, not the credit-card fields below.
+// There's no HTML autocomplete token for this the way there is for
+// credit cards (autocomplete="cc-number" etc), so detection here is
+// inherently best-effort, checked first since it's now the common case.
+const GIFT_CARD_CODE_SELECTORS = [
+  'input[name*="giftcard" i]',
+  'input[id*="giftcard" i]',
+  'input[name*="gift-card" i]',
+  'input[id*="gift-card" i]',
+  'input[name*="gift_card" i]',
+  'input[id*="gift_card" i]',
+  'input[placeholder*="gift card" i]',
+  'input[name*="promo" i]',
+  'input[id*="promo" i]',
+  'input[placeholder*="promo code" i]',
+  'input[name*="voucher" i]',
+  'input[id*="voucher" i]',
+];
+
+// Kept for a Visa-shaped product, if one's ever added back to the
+// catalog (see RESEARCH.md on why the two Visa products tried so far
+// didn't work out). Checked second, after gift-card fields.
 const CARD_NUMBER_SELECTORS = [
   'input[autocomplete="cc-number"]',
   'input[name*="cardnumber" i]',
@@ -65,16 +93,29 @@ const ZIP_SELECTORS = ['input[autocomplete="postal-code"]', 'input[name*="zip" i
 
 const BUTTON_ID = "atlus-pay-btn";
 
+// Best-effort signals that a merchant already accepts crypto directly
+// through their own checkout, in which case Atlus buying a gift card on
+// top of that would be strictly worse for the user (extra step, possible
+// rounding waste) than just paying the merchant's own way. Checked
+// against script/iframe src and link hrefs on the page. This can produce
+// false negatives (a gateway not on this list) but not false positives -
+// each of these is a specific vendor's own domain, not a generic pattern.
+const DIRECT_CRYPTO_MARKERS = [
+  "commerce.coinbase.com",
+  "bitpay.com",
+  "opennode.com",
+  "coingate.com",
+  "nowpayments.io",
+  "btcpay",
+  "strike.me",
+];
+
 const USDC_ADDRESS_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_DECIMALS = 6;
 const ERC20_BALANCE_OF_SELECTOR = "0x70a08231";
 const ERC20_TRANSFER_SELECTOR = "0xa9059cbb";
 
 let injected = false;
-
-// ---------------------------------------------------------------------
-// Checkout detection and card fill (identical to the extension version)
-// ---------------------------------------------------------------------
 
 // ---------------------------------------------------------------------
 // Merchant compatibility check - best effort only. This can reduce the
@@ -100,7 +141,11 @@ function checkBillingCountryField() {
   return null;
 }
 
-async function checkMerchantCompatibility() {
+// targetType matters here: the billing-country check only makes sense for
+// a Visa-shaped card (AVS-style region lock). A store gift card isn't a
+// payment card and has no AVS check, so that heuristic would just be
+// noise for the common case now.
+async function checkMerchantCompatibility(targetType) {
   const settings = await ipcRenderer.invoke("settings:get");
   const hostname = window.location.hostname.replace(/^www\./, "");
   const blocklist = settings.merchantBlocklist || [];
@@ -110,10 +155,41 @@ async function checkMerchantCompatibility() {
     reasons.push(`${hostname} is on your merchant blocklist`);
   }
 
-  const countryIssue = checkBillingCountryField();
-  if (countryIssue) reasons.push(countryIssue);
+  if (targetType === "creditcard") {
+    const countryIssue = checkBillingCountryField();
+    if (countryIssue) reasons.push(countryIssue);
+  }
 
   return { compatible: reasons.length === 0, reasons };
+}
+
+// Best-effort: does this page already look like it takes crypto directly?
+// If so, buying an Atlus gift card is strictly worse for the user (an
+// extra conversion step, possible rounding waste) than just using the
+// merchant's own crypto checkout. Checked against script/iframe src and
+// link hrefs across the page, not just the visible form.
+function detectDirectCryptoAcceptance() {
+  const sources = [
+    ...document.querySelectorAll("script[src], iframe[src]"),
+  ].map((el) => el.src);
+  const links = [...document.querySelectorAll("a[href]")].map((el) => el.href);
+  const haystack = [...sources, ...links].join(" ").toLowerCase();
+  return DIRECT_CRYPTO_MARKERS.some((marker) => haystack.includes(marker));
+}
+
+// Asks the coordinator whether retailers.js has a real, verified product
+// for the site the user is actually on. No fuzzy matching happens here or
+// in the coordinator, only an exact domain/subdomain match against a
+// hand-curated list (see coordinator/retailers.js).
+async function matchRetailer() {
+  const hostname = window.location.hostname;
+  try {
+    const response = await fetch(`${COORDINATOR_URL}/api/atlus/match?domain=${encodeURIComponent(hostname)}`);
+    const data = await response.json();
+    return data.retailer || null;
+  } catch {
+    return null;
+  }
 }
 
 function findField(selectors) {
@@ -140,7 +216,7 @@ function findTotal() {
   return null;
 }
 
-function injectButton(cardNumberField) {
+function injectButton(anchorField) {
   if (injected || document.getElementById(BUTTON_ID)) return;
   const button = document.createElement("button");
   button.id = BUTTON_ID;
@@ -160,7 +236,7 @@ function injectButton(cardNumberField) {
     "cursor:pointer",
   ].join(";");
   button.addEventListener("click", onPayClick);
-  cardNumberField.insertAdjacentElement("beforebegin", button);
+  anchorField.insertAdjacentElement("beforebegin", button);
   injected = true;
 }
 
@@ -173,15 +249,39 @@ function setNativeValue(field, value) {
   field.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function fillCard({ number, expiry, cvv }) {
+// Finds whatever field the redeemed card/code should go into, checked in
+// priority order: a gift-card/promo-code field first (the common case for
+// retailers.js's store gift cards), a Visa-shaped card-number field
+// second (for a future card-network product, if one's ever added back).
+// Returns null if the checkout page has neither, in which case there's
+// nowhere to anchor the button at all.
+function findRedemptionTarget() {
+  const giftCardField = findField(GIFT_CARD_CODE_SELECTORS);
+  if (giftCardField) return { type: "giftcard", field: giftCardField };
+
   const cardField = findField(CARD_NUMBER_SELECTORS);
-  const expiryField = findField(EXPIRY_SELECTORS);
-  const cvvField = findField(CVV_SELECTORS);
-  if (cardField) setNativeValue(cardField, number);
-  if (expiryField) setNativeValue(expiryField, expiry);
-  if (cvvField) setNativeValue(cvvField, cvv);
-  // No auto-submit, same reasoning as the extension: real money was just
-  // spent, final submission stays a manual, visible click.
+  if (cardField) return { type: "creditcard", field: cardField };
+
+  return null;
+}
+
+// No auto-submit either way, same reasoning as the extension: real money
+// was just spent, final submission stays a manual, visible click.
+function fillRedemption(target, redemption) {
+  if (target.type === "giftcard") {
+    if (redemption.kind === "code" && redemption.code) {
+      setNativeValue(target.field, redemption.code);
+    }
+    return;
+  }
+
+  if (target.type === "creditcard" && redemption.kind === "creditcard") {
+    const expiryField = findField(EXPIRY_SELECTORS);
+    const cvvField = findField(CVV_SELECTORS);
+    setNativeValue(target.field, redemption.number);
+    if (expiryField) setNativeValue(expiryField, redemption.expiry);
+    if (cvvField) setNativeValue(cvvField, redemption.cvv);
+  }
 }
 
 // Fills whatever billing-address fields the checkout form has from the
@@ -205,9 +305,14 @@ function fillBillingAddress(settings) {
   }
 }
 
+let currentTarget = null;
+
 function scanForCheckoutForm() {
-  const cardNumberField = findField(CARD_NUMBER_SELECTORS);
-  if (cardNumberField) injectButton(cardNumberField);
+  const target = findRedemptionTarget();
+  if (target) {
+    currentTarget = target;
+    injectButton(target.field);
+  }
 }
 
 // Preload scripts run before the page's HTML has been parsed, so
@@ -302,6 +407,7 @@ function buildOverlay(amountUsd) {
         This sends real USDC from your connected wallet to purchase a real prepaid card. Confirm the exact amount shown in your wallet app before approving.
       </div>
       <div id="atlus-overlay-balance" style="margin:0 0 16px;font-size:13px;color:#525252;">Scan the QR code with a WalletConnect-compatible wallet...</div>
+      <div id="atlus-overlay-code" style="display:none;margin:0 0 16px;padding:10px 12px;border-radius:8px;background:#f5f5f5;font-family:monospace;font-size:13px;word-break:break-all;text-align:left;"></div>
       <div style="display:flex;gap:8px;">
         <button type="button" id="atlus-overlay-cancel-btn" style="flex:1;padding:11px;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;background:#f5f5f5;color:#171717;">Cancel</button>
         <button type="button" id="atlus-overlay-confirm-btn" disabled style="flex:1;padding:11px;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;background:#171717;color:#fff;opacity:0.5;">Confirm Payment</button>
@@ -329,6 +435,11 @@ async function onPayClick() {
     alert("Atlus Pay could not detect the order total on this page.");
     return;
   }
+  const target = currentTarget;
+  if (!target) {
+    alert("Atlus Pay could not find a card or gift-card field to fill on this page.");
+    return;
+  }
 
   const overlay = buildOverlay(amount);
   const confirmBtn = overlay.querySelector("#atlus-overlay-confirm-btn");
@@ -338,11 +449,31 @@ async function onPayClick() {
 
   cancelBtn.addEventListener("click", () => removeOverlay(overlay));
 
-  // Merchant compatibility gate: runs before any wallet interaction, so
-  // a failed check means no wallet is ever connected and no crypto can
-  // possibly be spent, not just that spending gets blocked later.
-  setStatus(overlay, "Checking merchant compatibility...");
-  const { compatible, reasons } = await checkMerchantCompatibility();
+  // Priority order, checked before any wallet is ever connected, so
+  // nothing below the first blocking check gets a chance to spend crypto:
+  //   1. Merchant already takes crypto directly - Atlus buying a gift
+  //      card on top of that would be strictly worse for the user.
+  //   2. A verified retailer product exists for this exact site.
+  //   3. Neither - Atlus doesn't support this checkout yet.
+  setStatus(overlay, "Checking this checkout...");
+
+  if (detectDirectCryptoAcceptance()) {
+    balanceEl.textContent =
+      "This site looks like it already accepts crypto directly at checkout. Atlus doesn't need to buy a gift card here, look for a crypto payment option on this page.";
+    setStatus(overlay, "");
+    confirmBtn.remove();
+    return;
+  }
+
+  const retailer = await matchRetailer();
+  if (!retailer) {
+    balanceEl.textContent = `Atlus doesn't support ${window.location.hostname.replace(/^www\./, "")} yet.`;
+    setStatus(overlay, "");
+    confirmBtn.remove();
+    return;
+  }
+
+  const { compatible, reasons } = await checkMerchantCompatibility(target.type);
   if (!compatible) {
     balanceEl.textContent = "This merchant may not accept the Atlus card.";
     setStatus(overlay, reasons.join(" "), "error");
@@ -374,10 +505,10 @@ async function onPayClick() {
     return;
   }
 
-  confirmBtn.addEventListener("click", () => runPayment(overlay, amount, account));
+  confirmBtn.addEventListener("click", () => runPayment(overlay, amount, account, target, retailer.productId));
 }
 
-async function runPayment(overlay, amountUsd, account) {
+async function runPayment(overlay, amountUsd, account, target, productId) {
   const confirmBtn = overlay.querySelector("#atlus-overlay-confirm-btn");
   const cancelBtn = overlay.querySelector("#atlus-overlay-cancel-btn");
   const balanceEl = overlay.querySelector("#atlus-overlay-balance");
@@ -389,6 +520,7 @@ async function runPayment(overlay, amountUsd, account) {
     setStatus(overlay, "Creating payment...");
     invoice = await requestFromServer(`${COORDINATOR_URL}/api/atlus/create-payment`, {
       amountFiat: Number(amountUsd),
+      productId,
     });
     if (invoice.error) throw new Error(invoice.error);
   } catch (error) {
@@ -400,11 +532,11 @@ async function runPayment(overlay, amountUsd, account) {
 
   const cardValue = Number(invoice.cardValue);
   const checkoutTotal = Number(amountUsd);
-  if (invoice.cardCurrency && cardValue > checkoutTotal) {
+  if (!invoice.exact && cardValue > checkoutTotal) {
     const difference = (cardValue - checkoutTotal).toFixed(2);
     balanceEl.textContent = `This purchases a ${cardValue} ${invoice.cardCurrency} card for a ${checkoutTotal} checkout. The ${difference} ${invoice.cardCurrency} difference is not refunded.`;
-  } else if (invoice.cardCurrency) {
-    balanceEl.textContent = `Card value: ${cardValue} ${invoice.cardCurrency}.`;
+  } else {
+    balanceEl.textContent = `Card value: ${cardValue} ${invoice.cardCurrency}${invoice.exact ? " (exact match, no waste)" : ""}.`;
   }
 
   setStatus(overlay, "");
@@ -439,18 +571,33 @@ async function runPayment(overlay, amountUsd, account) {
     if (result.error) throw new Error(result.error);
     if (result.status !== "paid") throw new Error(`Payment ${result.status}. You can try again.`);
 
-    fillCard(result.card);
-    const settings = await ipcRenderer.invoke("settings:get");
-    fillBillingAddress(settings);
+    const redemption = result.redemption;
+    fillRedemption(target, redemption);
+
+    // The redemption format varies per retailer and hasn't been verified
+    // against a real fulfilled order for most of them yet (see
+    // RESEARCH.md), so the raw text always gets shown too, not just
+    // whatever got auto-filled. If auto-fill didn't find a code to use,
+    // this is the only way the user actually gets their card.
+    const codeEl = overlay.querySelector("#atlus-overlay-code");
+    if (redemption.raw) {
+      codeEl.textContent = redemption.raw;
+      codeEl.style.display = "block";
+    }
+
+    if (target.type === "creditcard") {
+      const settings = await ipcRenderer.invoke("settings:get");
+      fillBillingAddress(settings);
+    }
 
     requestFromServer(`${WEBSITE_URL}/api/transactions/complete`, {
       walletAddress: account,
       amount: amountUsd,
       merchant: window.location.hostname,
-      cardLast4: result.card.number.slice(-4),
+      cardLast4: redemption.kind === "creditcard" ? redemption.number.slice(-4) : null,
     }).catch(() => {});
 
-    setStatus(overlay, "Payment confirmed. Card filled in below.", "success");
+    setStatus(overlay, "Payment confirmed. Check the code below if it wasn't filled in automatically.", "success");
     setTimeout(() => removeOverlay(overlay), 2500);
   } catch (error) {
     setStatus(overlay, error.message, "error");

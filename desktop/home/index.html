@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Atlus</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #fafafa;
+        color: #171717;
+      }
+      header {
+        padding: 56px 32px 28px;
+        text-align: center;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 44px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      p.subtitle {
+        margin: 0 0 28px;
+        font-size: 16px;
+        color: #737373;
+      }
+      #search {
+        width: 100%;
+        max-width: 480px;
+        padding: 16px 20px;
+        font-size: 17px;
+        border: 2px solid #e5e5e5;
+        border-radius: 14px;
+        outline: none;
+      }
+      #search:focus {
+        border-color: #171717;
+      }
+      main {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 0 32px 64px;
+      }
+      .category {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #a3a3a3;
+      }
+      .category-block {
+        margin-bottom: 36px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 14px;
+      }
+      a.card {
+        display: block;
+        padding: 22px 20px;
+        background: #fff;
+        border: 1px solid #ececec;
+        border-radius: 16px;
+        text-decoration: none;
+        color: #171717;
+        transition: transform 0.08s ease, box-shadow 0.08s ease;
+      }
+      a.card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+        border-color: #d4d4d4;
+      }
+      .card-name {
+        font-size: 19px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .card-tag {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 3px 9px;
+        border-radius: 999px;
+      }
+      .card-tag.range {
+        background: #dcfce7;
+        color: #15803d;
+      }
+      .card-tag.fixed {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      #empty {
+        display: none;
+        text-align: center;
+        color: #a3a3a3;
+        font-size: 15px;
+        padding: 48px 0;
+      }
+      #error {
+        display: none;
+        text-align: center;
+        color: #dc2626;
+        font-size: 14px;
+        padding: 24px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Atlus</h1>
+      <p class="subtitle">Pick where you want to shop. Pay with crypto when you check out.</p>
+      <input id="search" type="text" placeholder="Search retailers..." autofocus />
+    </header>
+    <main>
+      <div id="results"></div>
+      <div id="empty">No retailers match that search.</div>
+      <div id="error">Couldn't load the retailer list. Is the coordinator running?</div>
+    </main>
+    <script src="home.js"></script>
+  </body>
+</html>

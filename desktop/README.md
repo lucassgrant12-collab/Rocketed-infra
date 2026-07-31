@@ -13,10 +13,15 @@ This app sidesteps that entirely: it's a real desktop application distributed as
 | Piece | Role |
 |---|---|
 | `main.js` | Electron main process. Creates the window, lays out the shell + BrowserView, hosts WalletConnect's SignClient, handles all IPC. |
-| `shell/` | The address bar strip at the top of the window (not part of the embedded browsing content), plus the settings window. `index.html`/`shell.js` are the address bar UI, `shell-preload.js` is its narrow, navigation-only IPC bridge. `settings.html`/`settings-ui.js`/`settings-preload.js` are the settings window, opened by the gear button. |
-| `inject/checkout.js` | The preload script attached to the BrowserView showing whatever site the user is on. Runs on every page navigated to, same job `extension/content.js` does: detect a checkout form, inject the button, run the merchant compatibility check, drive the full-page overlay, fill the card and billing address. Ported directly from the extension version. |
+| `home/` | Atlus's own start screen, `index.html`/`home.js`. A searchable grid of the retailer catalog (fetched from the coordinator's `GET /api/atlus/retailers`), not a general browser start page, see below. |
+| `shell/` | The top strip at the top of the window (not part of the embedded browsing content), plus the settings window. `index.html`/`shell.js` are back/forward/reload/home controls, `shell-preload.js` is its narrow IPC bridge. `settings.html`/`settings-ui.js`/`settings-preload.js` are the settings window, opened by the gear button. |
+| `inject/checkout.js` | The preload script attached to the BrowserView showing whatever site the user is on. Runs on every page navigated to, same job `extension/content.js` does: detect a checkout form, match the current domain against the retailer catalog, run the merchant compatibility check, drive the full-page overlay, fill the resulting code/card and billing address. |
 | `walletconnect.js` | Lazily creates and caches the WalletConnect SignClient. Runs only in the main process. |
 | `settings.js` | Reads/writes the user's cardholder name, billing address, and merchant blocklist to a JSON file in Electron's `userData` directory. No field ships with a pre-filled value, see the settings section below for why. |
+
+## Not a general browser, on purpose
+
+There's no address bar and no free-text search. The window opens on Atlus's own home screen (`home/index.html`), a big searchable grid of retailers Atlus actually has a real, verified product for (see `coordinator/retailers.js`). Clicking one is a plain link, no special navigation logic, it just opens that retailer's real site in the BrowserView the same way any link click would. The top strip keeps back/forward/reload (useful once you're browsing a retailer's own site) and a Home button back to the grid, nothing else. This is a deliberate scope narrowing: Atlus only claims to work on sites it's actually checked, not "any checkout," which is a claim that turned out not to hold up under the Visa-card model (see below).
 
 ## Two real Electron bugs fixed here, worth knowing if the BrowserView ever renders broken again
 
@@ -37,23 +42,37 @@ MetaMask and Phantom are themselves browser extensions. They don't exist inside 
 
 **Balance checks bypass the wallet entirely.** A balance is public on-chain data, no signature or wallet permission needed to read it, so `checkout.js` queries Base's official public RPC (`https://mainnet.base.org`) directly with a plain `eth_call`, instead of routing a read through a session that's reserved for the one thing it actually needs to authorize: the real transfer.
 
-## What's identical to the extension version
+## What's still shared with the extension version
 
-The checkout form detection (selectors, `MutationObserver` for late-rendering SPA forms), the card-fill logic (native setter + dispatched events), the ERC-20 `transfer`/`balanceOf` calldata encoding, and the overlay's two-step confirmation (amount, then an explicit second click if the card's fixed denomination costs more than the checkout total) are all ported directly, not rebuilt. See `extension/content.js` and `RESEARCH.md` for the reasoning behind each of those, it still applies here unchanged.
+The ERC-20 `transfer`/`balanceOf` calldata encoding and the overlay's two-step confirmation (amount, then an explicit second click if the card costs more than the checkout total) are unchanged. See `extension/content.js` and `RESEARCH.md` for the reasoning, it still applies here.
+
+## The payment priority chain
+
+Clicking "Pay with Atlus" runs through a fixed order, checked before any wallet is ever connected, so nothing past the first blocking step gets a chance to spend crypto:
+
+1. **Does this site already accept crypto directly?** `detectDirectCryptoAcceptance()` scans script/iframe src and link hrefs for known crypto-gateway domains (Coinbase Commerce, BitPay, OpenNode, etc). If so, buying an Atlus gift card would be strictly worse for the user (extra step, possible rounding waste) than the merchant's own crypto checkout, so Atlus tells the user that and stops.
+2. **Does `coordinator/retailers.js` have a real, verified product for this exact domain?** Checked via `GET /api/atlus/match`, an exact domain match only, no fuzzy matching, ever.
+3. **Neither** - Atlus says so plainly and doesn't attempt a payment.
+
+## Gift-card fields, not just credit-card fields
+
+Most retailers in the catalog issue their own store gift card once Atlus pays for it, not a Visa-network card. That redeems through a "gift card / promo code" field, not the `cc-number`/`cc-exp`/`cc-csc` fields a payment card uses, and there's no HTML `autocomplete` token for gift-card fields the way there is for credit cards, so `findRedemptionTarget()` in `checkout.js` checks gift-card-shaped selectors first, credit-card selectors second (kept for a future card-network product, if one's ever added back). Detection here is expected to miss sometimes, that's why the overlay always shows the raw redemption text as a copy-paste fallback (see `coordinator/server.js`'s `parseRedemption()`), not just whatever got auto-filled.
 
 ## Merchant compatibility check
 
-Before any wallet is connected, `checkMerchantCompatibility()` in `checkout.js` runs two checks: whether the current domain is on the user's own merchant blocklist (set in the settings window, empty by default), and whether the checkout form has a billing-country field that doesn't even list the United States. If either fails, the overlay shows the reason and removes the Confirm button, no wallet connection is attempted at all, so nothing gets a chance to spend crypto.
+Runs after a retailer match is found, before any wallet is connected. `checkMerchantCompatibility()` always checks the user's own merchant blocklist (set in the settings window, empty by default). It only checks for a billing-country field missing the United States when the redemption target is a Visa-shaped card, that heuristic doesn't apply to a store gift card, which has no AVS check.
 
-This is a **best-effort** check, not a guarantee. There's no reliable way to know from the DOM alone whether a specific payment gateway's BIN-range region lock will actually accept a given prepaid card, that can only be known by attempting the charge. Nothing is hardcoded into a "known incompatible merchants" list here either, since no such list has been independently verified yet, only what a user adds to their own blocklist after a real observed rejection.
+This is a **best-effort** check, not a guarantee. There's no reliable way to know from the DOM alone whether a specific payment gateway will actually accept a given card, that can only be known by attempting the charge.
 
 ## Settings: cardholder name and billing address
 
-Opened via the gear button in the address bar. Fills whatever name/address fields a checkout form has, right after the card number/expiry/CVV, using whatever the user has entered in settings. Every field starts empty, on purpose: this needs to be the cardholder's own real information (matching whoever the Bitrefill card gets issued to) for a merchant's address-verification check to make sense, so there's no built-in default address of any kind here to fill that in for them.
+Opened via the gear button in the top strip. Only relevant for a Visa-shaped redemption target, fills whatever name/address fields a checkout form has using whatever the user has entered in settings. Every field starts empty, on purpose: this needs to be the cardholder's own real information for a merchant's address-verification check to make sense, so there's no built-in default address of any kind.
 
-## Open question: the USA variable-amount Visa card is currently blocked, not built
+## The card system changed again: merchant gift cards, not a universal Visa
 
-The plan to move off fixed-denomination cards (see `coordinator/server.js`) onto Bitrefill's real variable-amount **Digital Prepaid Visa (USA)** product was checked against the live API before writing any code for it. The product itself is real (any dollar amount, $1,000/week cap, asks for a cardholder name, confirmed against Bitrefill's own product page). But `GET /v2/products/virtual-prepaid-visa-usa` returns `403 not_available` for this account specifically, while the already-working AU product and two other countries' general-purpose cards both return `200` on the same API key, isolating this to an account-level restriction on the USA product, not a network issue. Full findings in [RESEARCH.md](../RESEARCH.md#2026-07-31---desktop-app-two-real-electron-bugs-and-a-blocked-bitrefill-product), including why the "use a VPN/proxy for a US IP" idea from the incoming spec wasn't built: it wouldn't fix an account-level 403, and Bitrefill's own terms treat circumventing geoblocking as grounds for account suspension. The coordinator still runs on the fixed-package AU product until there's a real path to the USA product.
+The plan to move off fixed-denomination cards onto Bitrefill's real variable-amount **Digital Prepaid Visa (USA)** product was checked against the live API. It's real, but `GET /v2/products/virtual-prepaid-visa-usa` returns `403 not_available` for this account, tied to account country not IP (confirmed: `physical-prepaid-visa-usa` returns `"not available in your country (AU)"` explicitly). Separately, the already-configured AU Visa card turned out to require app-based activation with an Australian mobile number and wallet-tokenization, no plain card number at all, so it was never actually going to work either.
+
+The replacement, built here: buy the checking-out merchant's **own** gift card instead of a universal card. A wider survey of 77 everyday retailers found most (65%, higher in the US at 82%) support an exact custom amount, so the fixed-denomination overpay problem mostly disappears too. Full findings, including the Bitrefill account-block investigation and the survey methodology, in [RESEARCH.md](../RESEARCH.md#2026-07-31---the-card-system-changes-again-merchant-gift-cards-not-a-universal-visa).
 
 ## Run it
 

@@ -1,6 +1,6 @@
 # Atlus Pay coordinator
 
-A Node/Express server the browser extension talks to when a payment is confirmed. Talks to the **real** [Bitrefill API](https://docs.bitrefill.com), not a mock, moves real money once configured.
+A Node/Express server the Atlus desktop app (and the earlier browser extension) talks to when a payment is confirmed. Talks to the **real** [Bitrefill API](https://docs.bitrefill.com), not a mock, moves real money once configured.
 
 ## What was actually verified before this was built
 
@@ -27,40 +27,49 @@ Listens on `http://localhost:3001` by default (set `PORT` in `.env` to change it
 ## Required setup
 
 1. **`BITREFILL_API_KEY`**: Sign in at bitrefill.com, go to Account → Developers, generate an API key. Self-service, no approval process (that's only needed for the separate Business/Partner tier, which isn't what this uses).
-2. **`BITREFILL_VISA_PRODUCT_ID`**: there's no fixed, guessable product ID. Look it up once the server is running:
-   ```
-   curl "http://localhost:3001/api/bitrefill/search-products?q=prepaid%20visa"
-   ```
-   Note: depending on the account's region, the only Visa product that actually shows up may not be a US one. This project's configured product is `the-visa-digital-gift-card-australia` (AUD), the only Visa card this account's search could find regardless of query or country filter, likely tied to the account's own region. If your account surfaces a different one, use that instead.
-3. **`MAX_SPEND_USD`**: a hard cap (default $20) the coordinator enforces on any single invoice's card value, before the request ever reaches Bitrefill. Despite the name, it's interpreted in whatever currency the configured product actually uses (AUD here), not necessarily USD. Keep this low while testing.
+2. **`MAX_SPEND_USD`**: a hard cap (default $20) the coordinator enforces on any single invoice's card value, before the request ever reaches Bitrefill. Interpreted in whatever currency the matched retailer's product actually uses (mostly USD, some AUD/GBP/CAD, see `retailers.js`). Keep this low while testing.
 
-## Fixed card denominations
+There's no product ID to configure by hand anymore, see below.
 
-The configured product only comes in fixed packages ($10/$50/$100/$250 AUD), not a freely-set value. `create-payment` fetches the product's live packages (`GET /v2/products/:id`, cached 5 minutes) and picks the cheapest one that still covers the requested amount. Any excess over the actual checkout total is real, non-refunded money, the response includes `cardValue`/`cardCurrency` specifically so the extension can show this to the user *before* they approve a transaction, not bury it in a progress message. A real fix for this (a shared pool of leftover card balances, matched against future orders) is designed but not built, see RESEARCH.md.
+## The retailer catalog (`retailers.js`)
+
+The card-issuing model changed from a single configured Visa card to a **merchant-specific gift card matched by domain**. `retailers.js` is a hand-curated list of `{ name, domain, productId, category, type }`, each entry checked against the real `GET /v2/products/:id` endpoint before being added, the same discipline the old single `BITREFILL_VISA_PRODUCT_ID` env var used to enforce: a product_id is never guessed or fuzzy-matched at request time, only ever looked up once by a person.
+
+`type` is `"range"` (accepts an exact custom amount, no rounding waste) or `"fixed"` (preset denominations only, checkout total rounds up). A wider survey of 77 everyday US/UK/Canada/Australia retailers found **65% support an exact amount**, see [RESEARCH.md](../RESEARCH.md#2026-07-31---the-card-system-changes-again-merchant-gift-cards-not-a-universal-visa) for the full breakdown, including why Australia (42%) lags the US (82%).
+
+Why this replaced the Visa-card plan entirely: neither Visa product tried worked. The AU one (previously configured) turned out to require app-based activation with an Australian mobile number, no plain card number at all, wallet-tokenized only. The real USA one is blocked for this account (`403 not_available`, tied to account country, not IP, confirmed by testing). Full findings in RESEARCH.md.
 
 ## Endpoints
 
-**Bitrefill passthrough**, exposed for convenience, not called by the extension:
+**Bitrefill passthrough**, exposed for convenience:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/bitrefill/search-products?q=...` | Find a product's real `id`. Used once, manually, to fill in `BITREFILL_VISA_PRODUCT_ID`. |
+| `GET /api/bitrefill/search-products?q=...` | Manual product lookup, used once per retailer added to `retailers.js`, never at request time. |
 
-**Atlus's own endpoints**, the only ones the extension calls:
+**Atlus's own endpoints**:
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/atlus/create-payment` | Body: `{ amountFiat }`. Picks the cheapest covering package, creates a real Bitrefill invoice paid in USDC on Base, rejected if `amountFiat` exceeds `MAX_SPEND_USD` or no package covers it. Returns `{ invoiceId, paymentAddress, amountCrypto, cryptoCurrency, cardValue, cardCurrency, status }`. |
-| `POST /api/atlus/poll-until-paid` | Body: `{ invoiceId }`. Polls the real invoice every 2 seconds for up to 2 minutes. Once paid, fetches the order and attempts to parse card details from `redemption_info`. Returns `{ status: "paid", card: { number, expiry, cvv } }`, `{ status: "expired" | "cancelled" | "timeout" }`, or a 502 with the raw `redemptionInfo` text if parsing fails. |
+| `GET /api/atlus/retailers` | Returns the full curated catalog. What the desktop app's home screen renders. |
+| `GET /api/atlus/match?domain=...` | Exact domain/subdomain match against the catalog. Returns `{ retailer: {...} }` or `{ retailer: null }`. |
+| `POST /api/atlus/create-payment` | Body: `{ amountFiat, productId }`. If the product has a `range` covering `amountFiat`, buys that exact amount (`exact: true`). Otherwise picks the cheapest fixed package that covers it (`exact: false`). Rejected if `amountFiat` exceeds `MAX_SPEND_USD` or nothing covers it. Returns `{ invoiceId, paymentAddress, amountCrypto, cryptoCurrency, cardValue, cardCurrency, exact, status }`. |
+| `POST /api/atlus/poll-until-paid` | Body: `{ invoiceId }`. Polls every 2 seconds for up to 2 minutes. Once paid, fetches the order and runs `parseRedemption()` over `redemption_info`. Returns `{ status: "paid", redemption: { kind, raw, ... } }` (see below) or `{ status: "expired" | "cancelled" | "timeout" }`. |
 
 ## Why USDC, not ETH
 
 `payment.price` for an ETH invoice came back as a raw integer with no sane interpretation under any standard Ethereum unit. USDC's unit (6 decimals) is a fixed token standard, not something to trust Bitrefill's undocumented field on faith for. Full investigation, including the cross-check against Bitcoin that confirmed the "smallest standard unit of that currency" pattern generally holds (just not for ETH), is in [RESEARCH.md](../RESEARCH.md#2026-07-30---payment-currency-switched-from-eth-to-usdc-the-eth-unit-couldnt-be-verified).
 
-## Unverified: the `redemption_info` card parser
+## Unverified: the `redemption_info` parser
 
-`parseCardFromRedemptionInfo()` in `server.js` is a best-effort regex over free text, written against Bitrefill's generic documentation example, not a real Digital Prepaid Visa order's actual response. The first real test payment will either confirm it works or return a 502 with the raw `redemptionInfo` string, which is exactly what's needed to fix the patterns to match the real format. This is the single biggest unverified assumption left in the whole integration, everything else here was checked directly against real API responses.
+`parseRedemption()` in `server.js` is a best-effort regex over free text, written against Bitrefill's generic documentation examples, not a real fulfilled order for any specific retailer. It returns one of:
 
-## Card details
+- `{ kind: "creditcard", number, expiry, cvv }` - a Visa-shaped card (kept for if a card-network product's ever added back).
+- `{ kind: "code", code }` - a store gift card, Bitrefill's documented convention is a single alphanumeric code, or a number+PIN pair concatenated into one string when a retailer only has one redemption field.
+- `{ kind: "unknown" }` - didn't match either shape.
 
-Never logged, and never handled by anything except this coordinator and the browser extension in memory during a single payment. There's no mock fallback: if `BITREFILL_API_KEY` or `BITREFILL_VISA_PRODUCT_ID` are unset, `/api/atlus/create-payment` fails clearly instead of returning fake data.
+`raw` (the untouched `redemption_info` text) is always included alongside whichever kind matched, specifically so the desktop app can show it as a copy-paste fallback when auto-fill can't confidently place it (there's no HTML `autocomplete` token for gift-card fields the way there is for credit-card fields, so that detection is expected to miss sometimes, not just occasionally fail). This is the single biggest unverified assumption left in the whole integration, everything else here was checked directly against real API responses.
+
+## Card/code details
+
+Never logged, and never handled by anything except this coordinator and the desktop app in memory during a single payment. There's no mock fallback: if `BITREFILL_API_KEY` is unset, `/api/atlus/create-payment` fails clearly instead of returning fake data.

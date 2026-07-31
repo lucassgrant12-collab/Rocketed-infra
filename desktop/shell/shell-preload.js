@@ -7,10 +7,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("atlusShell", {
-  navigate: (input) => ipcRenderer.invoke("shell:navigate", input),
   back: () => ipcRenderer.invoke("shell:back"),
   forward: () => ipcRenderer.invoke("shell:forward"),
   reload: () => ipcRenderer.invoke("shell:reload"),
+  home: () => ipcRenderer.invoke("shell:home"),
   onUrlChanged: (callback) => {
     ipcRenderer.on("shell:url-changed", (event, url) => callback(url));
   },

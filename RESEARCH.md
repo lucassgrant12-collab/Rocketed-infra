@@ -298,3 +298,54 @@ That isolates the block to the USA product specifically, on this account, and it
 **The incoming spec's "connect through a US IP using a built-in proxy/VPN" idea was not built, for two reasons, not one:** first, it would not fix this specific error, since a 403 tied to account eligibility does not care what IP the request came from; second, Bitrefill's own terms state that circumventing geoblocking to buy a product not available to your account is a violation that can get the account suspended - building that would risk the working AU integration along with everything else on this API key, to chase a fix that would not have worked anyway. This is the same category of catch as the earlier fictional-API-spec and native-BTC-atomic-swap findings above: verify the concrete, testable claim before writing code around it, not after.
 
 **Not yet resolved:** whether this account can be upgraded/verified to access the USA Visa product is a Bitrefill-side question (likely account verification or a different API tier), not a code question, and needs a decision on how to proceed - continue with a fixed-package product for now, or pursue access to the USA product through Bitrefill directly.
+
+---
+
+## 2026-07-31 - The card system changes again: merchant gift cards, not a universal Visa
+
+### The AU Visa card, the one thing still "working," turned out not to work either
+
+Before replacing it with anything, it was worth checking why the user described the AU card as going through "this bs card network thing" to redeem, since if that concern was right, the entire fixed-package Visa design documented above was never going to reach a working end state, independent of the USA account block. It was right. Checked directly against the issuer's own instructions (`card.gift`, "The Card Network"):
+
+- No plain card number, expiry, or CVV is ever shown as text.
+- Redemption is: get an SMS, download the TCN app, add the card to Apple Pay/Google Pay, and it **only works inside a digital wallet set to the Australia region.**
+- Activation itself **requires a valid Australian mobile number.**
+
+There is nothing here Atlus's autofill could ever use, wallet-tokenized cards have no PAN to type into a checkout form. This is a bigger finding than the USA account block above: the AU integration was never actually going to reach a working payment, this just hadn't been checked yet. By contrast, Bitrefill's own support docs for the **USA** Virtual Prepaid Visa describe exactly the redemption model Atlus needs (full number/CVV/expiry shown as text, no app), which made the account block above sting more, that product would have worked, this account just can't buy it.
+
+### Brainstorming a replacement, with the user
+
+Rather than chase a third Visa-shaped product, the user asked to brainstorm other directions entirely. Several were discussed (detecting merchants that already accept crypto directly, a P2P payment-request tool, Bitrefill's separate reloadable Card product), landing on the one that reuses everything already built and needed no new Bitrefill account access: **buy the checking-out merchant's own gift card instead of a universal card.** Bitrefill's catalog is mostly merchant-specific gift cards (Target, Starbucks, Uber, thousands of others), and those aren't wallet-tokenized or phone-gated the way the Visa products turned out to be, they redeem as a plain code.
+
+The obvious follow-up concern, raised immediately: gift cards are typically fixed-denomination too, so wouldn't this just reintroduce the same overpay problem the Visa card had?
+
+### Checking that concern against real data instead of assuming either way
+
+First pass, 9 popular US merchants checked directly against `GET /v2/products/:id`: 6 of 8 valid results supported a custom amount (a `range` object with `min`/`max`/`step: 0.01`), not fixed packages. Asked to widen this to a real sample instead of guessing from 9: surveyed 77 everyday retailers (searched then fetched individually against the live API, not fuzzy-matched) across food, retail, electronics, beauty, travel, and gaming, in the US, UK, Canada, Australia, and a few global gaming platforms.
+
+Corrected results (the first pass undercounted the UK/Canada/Global numbers due to a rate-limiting bug in the survey script that silently produced `fetch_failed` for products that were actually accessible; re-fetched with retries before drawing conclusions):
+
+| Region | Custom-amount | Fixed-only | % custom |
+|---|---|---|---|
+| US | 27/33 | 6 | 82% |
+| UK | 8/11 | 3 | 73% |
+| Canada | 3/5 | 2 | 60% |
+| Global (Steam, PSN, Nintendo, Razer, Roblox) | 2/4 | 2 | 50% |
+| Australia | 10/24 | 14 | **42%** |
+| **Overall** | **50/77** | **27** | **65%** |
+
+A real, specific pattern: Australia is notably worse than everywhere else. Woolworths, Coles, Myer, Bunnings, Officeworks, Chemist Warehouse, BIG W, and Webjet are all fixed-denomination only, while their closest US equivalents mostly aren't. This matters for setting expectations honestly rather than claiming one uniform experience: US users get exact-amount, zero-waste gift cards for most everyday purchases, Australian users get that meaningfully less often with the current catalog.
+
+Confirmed separately, directly against the real invoice API (not assumed from the product schema): a ranged product accepts a `value` field (e.g. `"5.00"`) instead of `package_id`, and the resulting invoice priced it exactly, `payment.price: 5000000` for a $5.00 Starbucks card, 6-decimal USDC, no rounding. This is a real (but harmless, unpaid, never sent-to) test invoice, not a simulated response.
+
+### What got built
+
+- **`coordinator/retailers.js`**: a hand-curated catalog (~50 entries) mapping a real domain to a real, individually-checked `product_id`. Deliberately excludes several bad fuzzy-search matches surfaced during the survey (a "steam usa" search returned Ruth's Chris Steakhouse, "next uk" returned a Ukrainian phone operator, "mcdonalds usa" returned McDonald's Denmark) - the same "never guess a product_id at request time" discipline the single `BITREFILL_VISA_PRODUCT_ID` env var used to enforce, just applied to a list now instead of one value.
+- **`create-payment`** now takes `productId` and branches: if the product's `range` covers the requested amount, buys that exact value (`exact: true`), otherwise falls back to the old cheapest-covering-package logic (`exact: false`), so the desktop app can show "exact match, no waste" instead of a generic waste warning when it applies.
+- **A priority chain in `checkout.js`**, checked before any wallet connects: does this site already accept crypto directly (best-effort scan for known gateway domains in scripts/iframes/links) → does `retailers.js` have a verified product for this exact domain → neither, say so plainly. No fallback to a generic card exists anymore, since there isn't a working generic card to fall back to.
+- **Gift-card field detection**, separate from the existing credit-card field detection: most of these products redeem through a "gift card / promo code" field, not `cc-number`/`cc-exp`/`cc-csc`. There's no `autocomplete` token for this the way there is for credit cards, so it's explicitly weaker, unreliable detection is expected, not an edge case. The overlay always shows the raw `redemption_info` text as a copy-paste fallback regardless of whether auto-fill found a field, specifically because of that.
+- **The Atlus app's UI changed to match**: no more general address bar/search. The window opens on a searchable grid of the retailer catalog (`desktop/home/`), and picking one just navigates there, a plain link. Atlus now visibly only claims to work on sites it's actually checked, instead of implying "any checkout" the way a free-text browser would.
+
+### Verification method for this round
+
+Same approach as the ETH-unit investigation and the USA-Visa-block investigation earlier in this file: real API calls against the live Bitrefill account, not documentation alone, and not the survey's own fuzzy-search results taken at face value (the mismatches above were caught by inspecting the actual matched product, not by trusting the query that found it). The desktop app's new flow was exercised end-to-end (home screen → a real merchant's gift-card checkout page → wallet QR shown) using `webContents.capturePage()` for verification instead of asking for repeated manual screenshots, consistent with the earlier BrowserView bug-fixing session.

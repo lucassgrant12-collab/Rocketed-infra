@@ -28,14 +28,13 @@
       button:hover {
         background: #3a3a3a;
       }
-      #address {
+      #site {
         flex: 1;
-        height: 28px;
-        border-radius: 6px;
-        border: none;
-        padding: 0 10px;
         font-size: 13px;
-        outline: none;
+        color: #d4d4d4;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       #brand {
         color: #fff;
@@ -43,15 +42,23 @@
         font-weight: 700;
         padding: 0 4px;
         white-space: nowrap;
+        cursor: pointer;
+      }
+      #home-btn {
+        width: auto;
+        padding: 0 10px;
+        font-size: 13px;
+        font-weight: 600;
       }
     </style>
   </head>
   <body>
-    <span id="brand">Atlus</span>
+    <span id="brand" title="Back to Atlus">Atlus</span>
     <button id="back-btn" title="Back">&#8592;</button>
     <button id="forward-btn" title="Forward">&#8594;</button>
     <button id="reload-btn" title="Reload">&#8635;</button>
-    <input id="address" type="text" placeholder="Search or enter a URL" />
+    <button id="home-btn" title="Back to Atlus">Home</button>
+    <span id="site"></span>
     <button id="settings-btn" title="Settings">&#9881;</button>
     <script src="shell.js"></script>
   </body>
