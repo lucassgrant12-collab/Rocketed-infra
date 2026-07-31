@@ -6,19 +6,18 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { supabase } from "@/lib/supabaseClient";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const EXTENSION_FOLDER_URL =
-  "https://github.com/lucassgrant12-collab/Rocketed-infra/tree/main/extension";
+const DESKTOP_APP_FOLDER_URL =
+  "https://github.com/lucassgrant12-collab/Rocketed-infra/tree/main/desktop";
 
 const INSTALL_STEPS = [
   {
-    label: "Download the extension folder",
+    label: "Download the desktop app folder",
     detail: "From the repository above. Clone it or download it as a zip.",
   },
-  { label: 'Open "chrome://extensions"', detail: "Paste that into your address bar." },
-  { label: "Turn on Developer mode", detail: "Toggle in the top-right corner of that page." },
+  { label: "Install Node.js", detail: "If you don't already have it, from nodejs.org." },
   {
-    label: 'Click "Load unpacked"',
-    detail: 'Select the "extension" folder from what you downloaded.',
+    label: "Run it",
+    detail: 'Inside the "desktop" folder: "npm install" then "npm start".',
   },
 ];
 
@@ -86,7 +85,7 @@ export function OnboardingCard() {
     setEmailConfirmed(true);
   }
 
-  const stepTitle = step === 1 ? "Get started" : step === 2 ? "Connect your wallet" : "Get the extension";
+  const stepTitle = step === 1 ? "Get started" : step === 2 ? "Connect your wallet" : "Get the Atlus app";
 
   return (
     <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-xl shadow-neutral-900/5 ring-1 ring-black/5 dark:bg-neutral-900 dark:shadow-none dark:ring-white/10">
@@ -164,7 +163,8 @@ export function OnboardingCard() {
 
           <div className="border-t border-neutral-100 pt-5 text-left dark:border-neutral-800">
             <p className="text-center text-sm text-neutral-500 dark:text-neutral-400">
-              Adds a &ldquo;Pay with Atlus&rdquo; button to any checkout page.
+              A standalone app you shop in. Pick a retailer, pay with crypto,
+              Atlus fills in the gift card at checkout.
             </p>
             <ol className="mt-4 space-y-3">
               {INSTALL_STEPS.map((installStep, index) => (
@@ -182,16 +182,16 @@ export function OnboardingCard() {
               ))}
             </ol>
             <a
-              href={EXTENSION_FOLDER_URL}
+              href={DESKTOP_APP_FOLDER_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-4 block rounded-xl bg-neutral-900 px-4 py-2.5 text-center text-sm font-medium text-white shadow-sm transition hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
             >
-              Get Extension
+              Get the Atlus App
             </a>
             <p className="mt-3 text-center text-xs text-neutral-400 dark:text-neutral-600">
-              Not on the Chrome Web Store yet. This is a developer-mode install
-              while Atlus Pay is still in testing.
+              Not packaged as an installer yet. This runs from source while
+              Atlus is still in testing.
             </p>
           </div>
         </div>

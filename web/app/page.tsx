@@ -8,14 +8,14 @@ const STEPS = [
   },
   {
     number: "2",
-    title: "Install the extension",
-    description: 'Adds a "Pay with Atlus" button to any checkout page you visit.',
+    title: "Get the Atlus app",
+    description: "A standalone app you shop in, built for crypto checkout.",
   },
   {
     number: "3",
-    title: "Pay in one click",
+    title: "Pick a retailer, pay in one click",
     description:
-      "We convert instantly and fill the card fields for you. The merchant sees an ordinary payment.",
+      "Atlus buys that retailer's own gift card with your crypto and fills the code in for you.",
   },
 ];
 
@@ -26,16 +26,16 @@ export default function Home() {
         <div className="space-y-10">
           <div className="space-y-4 text-center lg:text-left">
             <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-              Pay with any crypto,{" "}
+              Pay with crypto{" "}
               <span className="text-neutral-400 dark:text-neutral-500">
-                anywhere online.
+                at the retailers you already shop at.
               </span>
             </h1>
             <p className="text-lg text-neutral-500 dark:text-neutral-400">
               No manual swaps, no waiting to cash out. Connect a wallet,
-              install the extension, and a &ldquo;Pay with Atlus&rdquo;
-              button appears at checkout on any site. No merchant
-              integration required.
+              open the Atlus app, and pick a retailer. Atlus buys that
+              retailer&rsquo;s own gift card with your crypto and fills it in
+              at checkout.
             </p>
           </div>
 

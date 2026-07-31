@@ -17,7 +17,7 @@ export function Footer() {
           <div>
             <p className="text-sm font-semibold">Atlus Pay</p>
             <p className="mt-1 max-w-xs text-sm text-neutral-500 dark:text-neutral-400">
-              A non-custodial way to pay with crypto at any checkout.
+              A non-custodial way to pay with crypto at retailers Atlus supports.
             </p>
           </div>
 
@@ -42,8 +42,8 @@ export function Footer() {
 
         <p className="mt-8 text-xs text-neutral-400 dark:text-neutral-600">
           &copy; {year} Atlus Pay. Website account setup runs on the Sepolia
-          test network. Checkout payments made through the extension use
-          real USDC on the Base network and issue a real prepaid card. See{" "}
+          test network. Checkout payments made through the Atlus app use
+          real USDC on the Base network to buy a real gift card. See{" "}
           <Link href="/disclosures" className="underline">
             Risk & Third-Party Disclosures
           </Link>

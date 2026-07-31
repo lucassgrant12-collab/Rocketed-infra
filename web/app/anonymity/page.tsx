@@ -20,30 +20,35 @@ export default function AnonymityPage() {
 
       <LegalSection title="What merchants see: nothing crypto related">
         <p>
-          At checkout, the extension fills in an ordinary one-time card
-          number, expiry, and CVV. The merchant charges that card the same
-          way they&rsquo;d charge any other card. They never see your wallet
-          address, never see your email, and never learn that the payment
-          originated from crypto at all.
+          At checkout, the Atlus app fills in an ordinary gift-card code, or
+          a one-time card number, expiry, and CVV, depending on which the
+          retailer issues. The merchant redeems it the same way they&rsquo;d
+          handle any other gift card or prepaid card. They never see your
+          wallet address, never see your email, and never learn that the
+          payment originated from crypto at all.
         </p>
         <p>
-          Shipping and billing details are filled directly into the
-          merchant&rsquo;s own form by your browser. They never pass through
-          Atlus&rsquo;s servers, so there&rsquo;s nothing for Atlus to even
-          have on file connecting your real-world identity to a purchase.
+          Billing details, when a checkout form asks for them, are filled
+          directly into the retailer&rsquo;s own form by the Atlus app
+          running on your device. They never pass through Atlus&rsquo;s
+          servers, so there&rsquo;s nothing for Atlus to even have on file
+          connecting your real-world identity to a purchase.
         </p>
       </LegalSection>
 
-      <LegalSection title="What the extension knows: a wallet address, nothing else">
+      <LegalSection title="What the Atlus app knows: a wallet address, nothing else">
         <p>
-          The extension only ever learns your wallet address, relayed from
-          the website the moment you connect a wallet there. It never learns
-          your email. That&rsquo;s a deliberate design choice, not an
-          accident: see the{" "}
+          The desktop app itself only ever learns your wallet address, from
+          the WalletConnect session you approve when paying. It never sees
+          or asks for your email. After a payment completes, the app does
+          send that wallet address to the Atlus website&rsquo;s backend so a
+          confirmation email can be sent, and the website already knows
+          which email that wallet address belongs to from onboarding, so
+          this is a real link, not something to gloss over. See the{" "}
           <Link href="/privacy" className="underline">
             Privacy Policy
           </Link>{" "}
-          for how that relay works.
+          for exactly what the website stores.
         </p>
       </LegalSection>
 
@@ -79,7 +84,7 @@ export default function AnonymityPage() {
 
       <LegalSection title="What the card issuer sees">
         <p>
-          Whichever provider issues the one-time card (see the{" "}
+          Whichever provider issues the gift card or prepaid card (see the{" "}
           <Link href="/disclosures" className="underline">
             Risk & Third-Party Disclosures
           </Link>{" "}
@@ -93,8 +98,9 @@ export default function AnonymityPage() {
 
       <LegalSection title="Ordinary web metadata still applies">
         <p>
-          Using the Atlus Pay website or extension involves the same network
-          metadata any website sees: your IP address is visible to the
+          Using the Atlus Pay website or desktop app involves the same
+          network metadata any website or app sees: your IP address is
+          visible to the
           infrastructure providers listed on the{" "}
           <Link href="/disclosures" className="underline">
             Risk & Third-Party Disclosures

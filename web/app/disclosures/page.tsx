@@ -9,11 +9,13 @@ export default function DisclosuresPage() {
       <LegalSection title="Current status">
         <p>
           Website account setup (email and wallet connection) runs on the
-          Sepolia test network. Checkout payments made through the browser
-          extension are real: the extension sends real USDC on the Base
-          network directly to Bitrefill and receives a real prepaid card in
-          return. Everything below describes the product as it actually
-          runs today, not a future state.
+          Sepolia test network. Checkout payments made through the Atlus
+          desktop app are real: the app sends real USDC on the Base network
+          directly to Bitrefill to buy a real gift card for whichever
+          retailer you picked. Atlus only works with retailers it has
+          individually verified, not every checkout, see the list inside the
+          app. Everything below describes the product as it actually runs
+          today, not a future state.
         </p>
       </LegalSection>
 
@@ -35,8 +37,11 @@ export default function DisclosuresPage() {
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
               Reown (WalletConnect) and RainbowKit
             </span>{" "}
-            provide the wallet connection interface used by the website and
-            extension.
+            provide the wallet connection interface. The website uses
+            RainbowKit&rsquo;s injected-wallet flow, the desktop app pairs
+            with your wallet by QR code through WalletConnect directly,
+            since a desktop app can&rsquo;t reach a browser-extension wallet
+            the way a webpage can.
           </li>
           <li>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
@@ -58,11 +63,10 @@ export default function DisclosuresPage() {
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
               Bitrefill
             </span>{" "}
-            issues the one-time prepaid card used at checkout. The extension
+            issues the retailer gift card used at checkout. The Atlus app
             pays Bitrefill directly with the USDC you send, Atlus Pay never
             holds it. Bitrefill has no free test mode for this, so every
-            checkout payment made through the extension is a real
-            transaction.
+            checkout payment made through the app is a real transaction.
           </li>
         </ul>
         <p>
@@ -99,7 +103,7 @@ export default function DisclosuresPage() {
 
       <LegalSection title="Smart contract and software risk">
         <p>
-          Software, including wallets, browser extensions, and any smart
+          Software, including wallets, the Atlus desktop app, and any smart
           contracts Atlus Pay uses, can contain bugs. Atlus Pay has not yet
           undergone a formal third-party security audit. Treat this as an
           early-stage product.

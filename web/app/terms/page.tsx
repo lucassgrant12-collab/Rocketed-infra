@@ -7,20 +7,20 @@ export default function TermsPage() {
     <LegalLayout title="Terms of Service" lastUpdated="July 29, 2026">
       <LegalSection title="1. What Atlus Pay is">
         <p>
-          Atlus Pay is a non-custodial browser extension and website that lets
-          you pay for goods and services at online checkouts using
-          cryptocurrency you hold in your own wallet. Atlus Pay converts your
-          crypto and issues a one-time virtual card to complete the payment.
-          Atlus Pay does not take custody of your crypto or your fiat funds
-          at any point in this process.
+          Atlus Pay is a non-custodial desktop app and website that lets you
+          pay at supported retailers using cryptocurrency you hold in your
+          own wallet. Inside the Atlus app, you pick a retailer and Atlus
+          buys that retailer&rsquo;s own gift card with your crypto, then
+          fills it in at checkout. Atlus Pay does not take custody of your
+          crypto or your fiat funds at any point in this process.
         </p>
         <p>
           Atlus Pay is currently in active development. Checkout payments
-          made through the browser extension use real USDC on the Base
-          network and issue a real prepaid card, they are not simulated.
-          Website account setup (email and wallet connection) runs on the
-          Sepolia test network. These terms apply regardless of whether a
-          given part of the product is on a test network or not.
+          made through the Atlus app use real USDC on the Base network and
+          buy a real gift card, they are not simulated. Website account setup
+          (email and wallet connection) runs on the Sepolia test network.
+          These terms apply regardless of whether a given part of the
+          product is on a test network or not.
         </p>
       </LegalSection>
 
@@ -45,12 +45,12 @@ export default function TermsPage() {
 
       <LegalSection title="4. No investment advice, no price guarantees">
         <p>
-          Atlus Pay converts your cryptocurrency to a stablecoin at the
-          market rate available at the time of payment. We do not guarantee
-          any particular exchange rate, and we are not providing financial,
-          investment, or tax advice. You are responsible for understanding
-          the tax and legal consequences of converting and spending your own
-          crypto.
+          Checkout payments are made directly in USDC, a stablecoin, from
+          your own wallet. Atlus Pay does not convert other cryptocurrency
+          to USDC on your behalf, how you acquire the USDC you pay with is
+          up to you. We are not providing financial, investment, or tax
+          advice. You are responsible for understanding the tax and legal
+          consequences of acquiring and spending your own crypto.
         </p>
       </LegalSection>
 

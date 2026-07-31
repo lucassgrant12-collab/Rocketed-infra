@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Atlus Pay",
-  description: "Pay for anything online with any crypto.",
+  description: "Pay with crypto at the retailers Atlus supports.",
 };
 
 export default function RootLayout({

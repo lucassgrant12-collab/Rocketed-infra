@@ -10,16 +10,18 @@ export default function PrivacyPage() {
         <p>
           When you sign up on the Atlus Pay website, we collect the email
           address you enter and the public wallet address you connect. When
-          you complete a payment through the extension, we record the
+          you complete a payment through the Atlus app, we record the
           transaction amount, the merchant&rsquo;s domain, and the last four
-          digits of the virtual card that was issued.
+          digits of the card, if the retailer&rsquo;s gift card was a
+          card-shaped one rather than a code.
         </p>
         <p>
           We deliberately do not collect your shipping address, billing
-          address, full card number, private keys, or seed phrase. Those
-          never touch Atlus Pay&rsquo;s servers: shipping and billing details
-          are filled directly into the merchant&rsquo;s own form by your
-          browser, and your wallet keys never leave your wallet.
+          address, full card or gift-card code, private keys, or seed
+          phrase. Those never touch Atlus Pay&rsquo;s servers: gift-card
+          codes and billing details are filled directly into the
+          retailer&rsquo;s own checkout form by the Atlus app running on your
+          device, and your wallet keys never leave your wallet.
         </p>
       </LegalSection>
 
@@ -40,7 +42,7 @@ export default function PrivacyPage() {
           <li>Resend, for delivering transaction confirmation emails.</li>
           <li>
             Reown (WalletConnect) and the wallet connector libraries in the
-            extension, for establishing a connection to your wallet. They
+            Atlus app, for establishing a connection to your wallet. They
             can see that a connection request happened, not your Atlus Pay
             email.
           </li>
@@ -56,9 +58,10 @@ export default function PrivacyPage() {
 
       <LegalSection title="4. What merchants see">
         <p>
-          A merchant you pay through Atlus Pay sees an ordinary card payment.
-          They do not see your wallet address, your email, or that crypto
-          was involved in the transaction at all. For the fuller picture of
+          A merchant you pay through Atlus Pay sees an ordinary gift-card or
+          prepaid-card redemption. They do not see your wallet address, your
+          email, or that crypto was involved in the transaction at all. For
+          the fuller picture of
           what stays private and what doesn&rsquo;t, including the parts
           outside Atlus Pay&rsquo;s control, see the{" "}
           <Link href="/anonymity" className="underline">

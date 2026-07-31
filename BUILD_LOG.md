@@ -276,6 +276,24 @@ Brainstormed alternatives with the user and landed on buying a **merchant-specif
 - Full desktop app flow, end to end, using `webContents.capturePage()` at each step rather than manual screenshots: the new home screen renders correctly (categorized grid, search box), navigating to a gift-card-shaped test checkout page correctly detects the `$12.50` total and injects the button next to the gift-card field (not the credit-card fields, confirming the new selector priority), and clicking through opens the overlay, passes the direct-crypto and retailer-match checks, and reaches a real WalletConnect QR code.
 - One real bug caught during this testing, unrelated to the feature itself: a debug capture script raced `webContents.loadURL()`'s own resolution against a separate `did-finish-load` listener and hung, since the event can fire before the listener attaches. Fixed by relying on `loadURL`'s own promise instead of a redundant listener.
 
+## 2026-07-31 - Website copy brought up to date with the desktop app pivot
+
+The website (`web/`) still described the old browser-extension product throughout: hero copy, the onboarding card's step 3 (Chrome "Load unpacked" instructions pointed at the `extension/` folder), the footer, and all four legal pages. None of that had been touched since the desktop app pivot, so it was actively describing a product that no longer matches what's built.
+
+### Updated
+
+- [web/app/page.tsx](web/app/page.tsx) - hero and three-step list now describe getting the Atlus app and picking a retailer, not installing an extension or implying "any checkout."
+- [web/components/OnboardingCard.tsx](web/components/OnboardingCard.tsx) - step 3 is "Get the Atlus app," install steps changed from Chrome extension loading to `cd desktop && npm install && npm start`, the download link now points at the `desktop/` folder instead of `extension/`.
+- [web/components/Footer.tsx](web/components/Footer.tsx) - "any checkout" softened to "retailers Atlus supports," "the extension" to "the Atlus app."
+- [web/app/terms/page.tsx](web/app/terms/page.tsx) - "browser extension" to "desktop app" throughout; section 4 rewritten, since it described converting crypto to a stablecoin at a market rate, but the real system pays directly in USDC the user already holds and doesn't convert anything.
+- [web/app/disclosures/page.tsx](web/app/disclosures/page.tsx) - extension references updated, added a line that Atlus only works with individually-verified retailers, not every checkout, and clarified the WalletConnect entry: the website uses RainbowKit's injected-wallet flow, the desktop app pairs by QR code instead, since a desktop app can't reach a browser-extension wallet.
+- [web/app/privacy/page.tsx](web/app/privacy/page.tsx) and [web/app/anonymity/page.tsx](web/app/anonymity/page.tsx) - extension to app throughout, "card" language broadened to "gift-card code or card" since most retailers now issue a gift-card code, not a Visa-shaped card. The anonymity page's "what the app knows" section was also corrected while updating it: it previously implied the app is fully disconnected from the website's stored email, but the app does send the wallet address to the website backend after a payment (for the confirmation email), and the website already links that wallet to an email from onboarding, so that's a real link, not something to gloss over in a page specifically about what stays private.
+- [web/app/api/transactions/complete/route.ts](web/app/api/transactions/complete/route.ts) - comment updated to note the desktop app calls this endpoint too, not just the extension.
+
+### Verified
+
+`npx tsc --noEmit` and `next build` both pass cleanly, all 7 routes still prerender. Confirmed against the live dev server that the new copy is actually being served, not just compiling.
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):

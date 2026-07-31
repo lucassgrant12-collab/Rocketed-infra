@@ -4,10 +4,11 @@ import { resend } from "@/lib/resend";
 
 const FROM_ADDRESS = process.env.RESEND_FROM_EMAIL || "Atlus Pay <onboarding@resend.dev>";
 
-// Called by the extension's background.js right after a payment succeeds
-// (fire-and-forget - a failure here doesn't undo the payment, it just
-// means no confirmation email goes out). Records the transaction and, if
-// the paying wallet has a known email, sends a summary.
+// Called by the Atlus desktop app's checkout.js (or the extension's
+// background.js) right after a payment succeeds (fire-and-forget - a
+// failure here doesn't undo the payment, it just means no confirmation
+// email goes out). Records the transaction and, if the paying wallet has
+// a known email, sends a summary.
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
 
@@ -15,10 +16,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "amount is required" }, { status: 400 });
   }
 
-  // walletAddress is optional: the extension can be used without ever
-  // going through website onboarding (no wallet-bridge sync happened), in
-  // which case the paying wallet is genuinely unknown. The transaction
-  // still gets recorded; only the confirmation email gets skipped.
+  // walletAddress is optional: the app or extension can be used without
+  // ever going through website onboarding, in which case the paying
+  // wallet is genuinely unknown. The transaction still gets recorded;
+  // only the confirmation email gets skipped.
   const walletAddress = body.walletAddress ? String(body.walletAddress) : null;
   const amount = String(body.amount);
   const merchant = body.merchant ? String(body.merchant) : null;
