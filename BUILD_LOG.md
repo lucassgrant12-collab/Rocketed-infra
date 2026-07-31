@@ -310,6 +310,18 @@ With the lockfile regenerated, `next build` (Turbopack) surfaced a second, unrel
 
 `npm ci --dry-run` succeeds cleanly (one unrelated, non-fatal peer warning from a transitive `valtio`/`use-sync-external-store` dependency, not a hard error), and `next build` completes with all 7 routes prerendering correctly, both re-run twice to confirm.
 
+## 2026-07-31 - Railway build failed again after pushing: the real cause was never fixed, only diagnosed
+
+Pushed the wagmi/RainbowKit fix above, Railway failed again immediately with a completely different, earlier-stage error: `Railpack could not determine how to build the app`, listing the repo root's contents (`coordinator/`, `desktop/`, `extension/`, `supabase/`, `web/`, docs, and a stray tracked file just named `start`). This is the "Root Directory" issue diagnosed in an earlier session and never actually fixed, since that fix was a Railway dashboard setting, not a code change, and evidently never got clicked.
+
+### Fixed without needing the dashboard this time
+
+Rather than describe the dashboard setting again and hope it gets set, added a root-level [package.json](package.json) that Railpack can auto-detect as a Node app at the actual repository root, whose `build`/`start` scripts just delegate into `web/` (`npm --prefix web ci && npm --prefix web run build`, `npm --prefix web run start`). This sidesteps the Root Directory setting entirely: Railpack finds a real Node app right where it's already looking, so there's nothing left to misconfigure in the dashboard. Also removed the stray tracked `start` file (7 bytes, just the text "start", a leftover from very early in the project with no actual function) since it was cluttering the exact directory listing Railpack couldn't make sense of.
+
+### Verified
+
+Ran the literal commands Railway would run, from the repo root, not from inside `web/`: `npm run build` (full `npm ci` + `next build`, all 7 routes prerender) and `npm run start` (real `next start`, confirmed serving with a `curl` `200`). Both work identically to running them inside `web/` directly, since that's all they do.
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):

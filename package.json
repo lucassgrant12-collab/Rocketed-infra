@@ -1,0 +1,9 @@
+{
+  "name": "atlus-pay",
+  "private": true,
+  "description": "Repo root. The deployable app is web/, this just gives Railpack a Node app to detect at the actual repository root instead of relying on a dashboard Root Directory setting, which is easy to leave unset in a monorepo.",
+  "scripts": {
+    "build": "npm --prefix web ci && npm --prefix web run build",
+    "start": "npm --prefix web run start"
+  }
+}
