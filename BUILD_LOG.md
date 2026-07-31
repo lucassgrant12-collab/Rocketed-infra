@@ -334,6 +334,26 @@ Fixed by deleting `web/node_modules` and `web/package-lock.json` entirely and re
 
 Same as the entry above, rerun end to end against the fresh lockfile: `npm ci --dry-run` clean, `next build` succeeds (all 7 routes), and the full root-level `npm run build` (the actual Railway command, `npm --prefix web ci && npm --prefix web run build`) succeeds from a cold `node_modules`, not just from an already-warm one.
 
+## 2026-07-31 - Website stripped down to a plain download page; onboarding dropped entirely
+
+User pointed out the website still ran a full email + wallet-connect onboarding on Sepolia, and questioned why, since you have to reconnect your wallet inside the Atlus app regardless. Confirmed it: the website's WalletConnect session and the app's are completely separate, onboarding's only real effect on the payment flow was an optional email receipt. Discussed building a proper accounts system instead; recommended against it, reasoning logged in [RESEARCH.md](RESEARCH.md#2026-07-31---website-onboarding-dropped-it-never-actually-connected-to-the-app), the "stay connected" problem the user actually wanted solved is a WalletConnect session-reuse fix in the desktop app, not an accounts system on the website.
+
+### Removed
+
+- `web/components/OnboardingCard.tsx`, `web/components/WalletBridge.tsx`, `web/lib/wagmi.ts`, `web/lib/supabaseClient.ts`, `web/app/providers.tsx` - all dead once there's no wallet-connect UI on the site.
+- `wagmi`, `@rainbow-me/rainbowkit`, `viem`, `@tanstack/react-query`, and the four `@x402/*` packages from `web/package.json`. This is the same dependency chain behind the three Railway build failures fixed just above, removing it outright instead of continuing to patch around it. `npm install` went from 835 packages to 375.
+- The "Sepolia Testnet" badge from `Header.tsx`, and every reference to website account setup / Sepolia across the four legal pages (`terms`, `privacy`, `disclosures`, `anonymity`).
+
+### Built
+
+- [web/app/page.tsx](web/app/page.tsx) - now a static server component: three-step explainer, a live retailer count, a download card (`web/components/DownloadCard.tsx`) with the run-from-source install steps moved over from the old onboarding card.
+- [web/scripts/generate-retailer-count.js](web/scripts/generate-retailer-count.js) - reads `coordinator/retailers.js` directly and writes `web/lib/retailerCount.ts`, wired in as `predev`/`prebuild` so the homepage's retailer count can't silently go stale.
+- Legal pages rewritten around the new reality rather than just find-and-replaced: the `anonymity` page's claim is now genuinely stronger, not just shorter - with no account anywhere, Atlus never has an email or any identity data at all, only a wallet address per transaction.
+
+### Verified
+
+`npm ci --dry-run` clean, `next build` succeeds (all 7 routes, noticeably faster: 7s compile vs 13-24s before), and a running `next start` spot-checked: homepage shows the real retailer count (52) with no "Sepolia" anywhere, all four legal pages return `200`.
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):

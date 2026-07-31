@@ -1,19 +1,20 @@
-import { OnboardingCard } from "@/components/OnboardingCard";
+import { DownloadCard } from "@/components/DownloadCard";
+import { RETAILER_COUNT } from "@/lib/retailerCount";
 
 const STEPS = [
   {
     number: "1",
-    title: "Connect your wallet",
-    description: "Any crypto you're holding. We don't ask which.",
-  },
-  {
-    number: "2",
-    title: "Get the Atlus app",
+    title: "Open the Atlus app",
     description: "A standalone app you shop in, built for crypto checkout.",
   },
   {
+    number: "2",
+    title: "Pick a retailer",
+    description: "From the retailers Atlus has already verified support for.",
+  },
+  {
     number: "3",
-    title: "Pick a retailer, pay in one click",
+    title: "Pay with crypto",
     description:
       "Atlus buys that retailer's own gift card with your crypto and fills the code in for you.",
   },
@@ -32,10 +33,11 @@ export default function Home() {
               </span>
             </h1>
             <p className="text-lg text-neutral-500 dark:text-neutral-400">
-              No manual swaps, no waiting to cash out. Connect a wallet,
-              open the Atlus app, and pick a retailer. Atlus buys that
-              retailer&rsquo;s own gift card with your crypto and fills it in
-              at checkout.
+              No manual swaps, no waiting to cash out. Open the Atlus app,
+              pick a retailer, and pay directly with your wallet.
+            </p>
+            <p className="inline-block rounded-full bg-neutral-100 px-4 py-1.5 text-sm font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+              Works with {RETAILER_COUNT}+ retailers today
             </p>
           </div>
 
@@ -57,7 +59,7 @@ export default function Home() {
         </div>
 
         <div className="flex justify-center lg:justify-end">
-          <OnboardingCard />
+          <DownloadCard />
         </div>
       </div>
     </main>

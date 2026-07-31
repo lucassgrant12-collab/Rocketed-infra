@@ -349,3 +349,28 @@ Confirmed separately, directly against the real invoice API (not assumed from th
 ### Verification method for this round
 
 Same approach as the ETH-unit investigation and the USA-Visa-block investigation earlier in this file: real API calls against the live Bitrefill account, not documentation alone, and not the survey's own fuzzy-search results taken at face value (the mismatches above were caught by inspecting the actual matched product, not by trusting the query that found it). The desktop app's new flow was exercised end-to-end (home screen → a real merchant's gift-card checkout page → wallet QR shown) using `webContents.capturePage()` for verification instead of asking for repeated manual screenshots, consistent with the earlier BrowserView bug-fixing session.
+
+---
+
+## 2026-07-31 - Website onboarding dropped: it never actually connected to the app
+
+### The question that killed it
+
+The user noticed the website still ran email + wallet-connect onboarding on Sepolia, and asked why, given you have to reconnect your wallet inside the Atlus app anyway. Checking that against what's actually built confirmed it: the website's WalletConnect/RainbowKit session and the desktop app's WalletConnect session are two entirely separate pairings that never share any state. The *only* thing website onboarding ever fed into the real payment flow was: after a payment, the app sends the paying wallet address to the website's backend, which looks that address up in the `users` table (populated by onboarding) to decide whether to send an email receipt. That's the entire value of a full signup funnel: an optional receipt, and only if the user happened to reuse the same wallet address on both the website and in the app, which nothing enforced.
+
+### The follow-up question, and why it wasn't "build proper accounts"
+
+The user's next ask was whether Atlus needed a real email+password account system instead, so a session could "stay logged in." Worth separating two different problems that were being conflated:
+
+1. **Re-pairing on every single payment**, even within one open app session. This was a real bug, not a design tradeoff: `onPayClick()` in `desktop/inject/checkout.js` unconditionally called `wallet:connect` every time, ignoring whatever session `main.js` already had active. WalletConnect sessions are meant to be reused.
+2. **Re-pairing after closing and reopening the app.** WalletConnect sessions are natively persistable and last on the order of days before expiring, this doesn't require an account system either, just not throwing the session away on process exit.
+
+Recommended against building password-based accounts: it adds real security surface (hashing, reset flows, session handling) for a benefit WalletConnect's own session model already provides for free, once actually used correctly instead of re-paired every time. The user agreed with dropping onboarding; the session-reuse fix itself is logged separately once built, not part of this entry.
+
+### What changed on the website
+
+- Deleted `components/OnboardingCard.tsx`, `components/WalletBridge.tsx`, `lib/wagmi.ts`, `lib/supabaseClient.ts` (the anon-key client, only ever used by onboarding), and `app/providers.tsx` (existed solely to wrap the app in `WagmiProvider`/`RainbowKitProvider`).
+- The homepage (`app/page.tsx`) is now a plain, static "download the app" page: three-step explanation, a retailer count, a download card with run-from-source instructions. No client-side JavaScript needed at all, it's a server component now.
+- Dropped `wagmi`, `@rainbow-me/rainbowkit`, `viem`, `@tanstack/react-query`, and the four `@x402/*` packages from `web/package.json` entirely, since nothing on the website does wallet-connect anymore. This happens to also be the exact dependency chain behind all three Railway build failures fixed a few entries up, removing it outright is a stronger fix than patching around its peer-dependency and optional-dependency issues: `npm install` went from 835 packages to 375.
+- Added a real "how many retailers does Atlus support" number to the homepage, generated at build time (`web/scripts/generate-retailer-count.js`, wired in as a `predev`/`prebuild` step) by reading `coordinator/retailers.js` directly, the same single source of truth the desktop app's home screen uses, so it can't silently drift out of date the way a hand-typed number would.
+- Rewrote all four legal pages (`terms`, `privacy`, `disclosures`, `anonymity`) to stop describing a signup flow and a Sepolia test network that no longer exist on the website. The `anonymity` page's claim materially improved as a result, not just got shorter: since there's no account anywhere, Atlus genuinely never has an email or any identity information at all now, only a wallet address per transaction, which is a stronger anonymity claim than before and is now actually true, not aspirational.

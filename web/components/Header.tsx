@@ -10,9 +10,6 @@ export function Header() {
           </div>
           <span className="font-semibold tracking-tight">Atlus Pay</span>
         </Link>
-        <span className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-          Sepolia Testnet
-        </span>
       </div>
     </header>
   );

@@ -17,10 +17,8 @@ export default function TermsPage() {
         <p>
           Atlus Pay is currently in active development. Checkout payments
           made through the Atlus app use real USDC on the Base network and
-          buy a real gift card, they are not simulated. Website account setup
-          (email and wallet connection) runs on the Sepolia test network.
-          These terms apply regardless of whether a given part of the
-          product is on a test network or not.
+          buy a real gift card, they are not simulated. There is no test
+          network or sandbox mode: using the Atlus app moves real crypto.
         </p>
       </LegalSection>
 

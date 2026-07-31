@@ -8,12 +8,12 @@ export default function PrivacyPage() {
     <LegalLayout title="Privacy Policy" lastUpdated="July 29, 2026">
       <LegalSection title="1. What we collect">
         <p>
-          When you sign up on the Atlus Pay website, we collect the email
-          address you enter and the public wallet address you connect. When
-          you complete a payment through the Atlus app, we record the
-          transaction amount, the merchant&rsquo;s domain, and the last four
-          digits of the card, if the retailer&rsquo;s gift card was a
-          card-shaped one rather than a code.
+          Atlus Pay has no account or sign-up. There is no email address on
+          file for you unless you contact us directly. When you complete a
+          payment through the Atlus app, we record the transaction: your
+          public wallet address, the amount, the merchant&rsquo;s domain, and
+          the last four digits of the card, if the retailer&rsquo;s gift
+          card was a card-shaped one rather than a code.
         </p>
         <p>
           We deliberately do not collect your shipping address, billing
@@ -27,24 +27,21 @@ export default function PrivacyPage() {
 
       <LegalSection title="2. How we use it">
         <p>
-          Your email is used to send you a summary after a payment completes
-          and for account related communication. Your wallet address is used
-          to identify your account, associate payments with it, and
-          determine the virtual card details needed for a transaction. We do
-          not sell your data.
+          Transaction records are kept for our own operational record
+          keeping, troubleshooting, and to detect abuse of the service. We
+          do not have your email, so we cannot and do not send you a
+          receipt. We do not sell your data.
         </p>
       </LegalSection>
 
       <LegalSection title="3. Who processes it">
         <p>The following third parties process data on our behalf:</p>
         <ul className="list-disc space-y-1 pl-5">
-          <li>Supabase, for storing account and transaction records.</li>
-          <li>Resend, for delivering transaction confirmation emails.</li>
+          <li>Supabase, for storing transaction records.</li>
           <li>
-            Reown (WalletConnect) and the wallet connector libraries in the
-            Atlus app, for establishing a connection to your wallet. They
-            can see that a connection request happened, not your Atlus Pay
-            email.
+            Reown (WalletConnect), for establishing the Atlus app&rsquo;s
+            connection to your wallet when you pay. They can see that a
+            pairing request happened, nothing about who you are.
           </li>
         </ul>
         <p>
@@ -73,26 +70,34 @@ export default function PrivacyPage() {
 
       <LegalSection title="5. Data retention">
         <p>
-          We retain account and transaction records for as long as your
-          account is active, plus a reasonable period after for record
-          keeping. You can request deletion at any time using the contact
-          details below, subject to any records we are legally required to
-          keep.
+          We retain transaction records for as long as reasonably necessary
+          for our own operations and record keeping. Since transactions
+          aren&rsquo;t tied to an account, you can request deletion of
+          records associated with a specific wallet address at any time
+          using the contact details below, subject to any records we are
+          legally required to keep.
         </p>
       </LegalSection>
 
       <LegalSection title="6. Your rights">
         <p>
-          You can request a copy of the data we hold about you, ask us to
-          correct it, or ask us to delete it, by contacting us below.
+          You can request a copy of the transaction data we hold associated
+          with a wallet address, ask us to correct it, or ask us to delete
+          it, by contacting us below.
         </p>
       </LegalSection>
 
       <LegalSection title="7. Cookies and local storage">
         <p>
-          The website uses local browser storage to keep your wallet
-          connection state between visits. We do not use advertising or
-          cross-site tracking cookies.
+          The Atlus Pay website is a static informational site and sets no
+          cookies and stores nothing in your browser. The Atlus desktop app
+          stores your own settings (cardholder name, billing address,
+          merchant blocklist) locally on your device, never on our servers,
+          see the{" "}
+          <Link href="/disclosures" className="underline">
+            Risk & Third-Party Disclosures
+          </Link>{" "}
+          page.
         </p>
       </LegalSection>
 

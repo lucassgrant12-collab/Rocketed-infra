@@ -41,9 +41,9 @@ export function Footer() {
         </div>
 
         <p className="mt-8 text-xs text-neutral-400 dark:text-neutral-600">
-          &copy; {year} Atlus Pay. Website account setup runs on the Sepolia
-          test network. Checkout payments made through the Atlus app use
-          real USDC on the Base network to buy a real gift card. See{" "}
+          &copy; {year} Atlus Pay. Checkout payments made through the Atlus
+          app use real USDC on the Base network to buy a real gift card.
+          See{" "}
           <Link href="/disclosures" className="underline">
             Risk & Third-Party Disclosures
           </Link>

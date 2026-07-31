@@ -8,13 +8,13 @@ export default function AnonymityPage() {
     <LegalLayout title="Anonymity" lastUpdated="July 30, 2026">
       <LegalSection title="The short version">
         <p>
-          Atlus Pay is anonymous to a great extent, not completely. A
-          merchant you pay never learns your wallet address, your email, or
-          that crypto was involved at all. Atlus itself does know the link
-          between your email and your wallet address, since that&rsquo;s how
-          onboarding and confirmation emails work. And the blockchain
-          transaction your wallet makes is public, the way every blockchain
-          transaction is. This page explains exactly where that line sits.
+          Atlus Pay is anonymous to a great extent, not completely. There is
+          no account or sign-up, so Atlus never has your email or any
+          identity information at all, only the wallet address that pays.
+          A merchant you pay never learns your wallet address or that crypto
+          was involved at all. And the blockchain transaction your wallet
+          makes is public, the way every blockchain transaction is. This
+          page explains exactly where that line sits.
         </p>
       </LegalSection>
 
@@ -36,31 +36,16 @@ export default function AnonymityPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="What the Atlus app knows: a wallet address, nothing else">
+      <LegalSection title="What Atlus knows: a wallet address and a transaction, nothing else">
         <p>
-          The desktop app itself only ever learns your wallet address, from
-          the WalletConnect session you approve when paying. It never sees
-          or asks for your email. After a payment completes, the app does
-          send that wallet address to the Atlus website&rsquo;s backend so a
-          confirmation email can be sent, and the website already knows
-          which email that wallet address belongs to from onboarding, so
-          this is a real link, not something to gloss over. See the{" "}
-          <Link href="/privacy" className="underline">
-            Privacy Policy
-          </Link>{" "}
-          for exactly what the website stores.
-        </p>
-      </LegalSection>
-
-      <LegalSection title="What Atlus knows: your email and your wallet address">
-        <p>
-          Atlus is not anonymous to Atlus. Onboarding stores your email
-          together with your wallet address, on purpose, so you can get a
-          confirmation after a payment and so support is possible if
-          something goes wrong. Row-level security stops any other user of
-          the public anon key from reading that data back, but it doesn&rsquo;t
-          hide it from Atlus&rsquo;s own backend, which needs it to function.
-          Full detail on exactly what&rsquo;s stored and why is in the{" "}
+          The desktop app only ever learns your wallet address, from the
+          WalletConnect session you approve when paying. It never sees or
+          asks for your email, your name, or any other identity information,
+          there&rsquo;s no account for that information to attach to in the
+          first place. After a payment completes, the app records the
+          transaction (wallet address, amount, merchant domain) to Atlus&rsquo;s
+          backend for its own operational record keeping. Full detail on
+          exactly what&rsquo;s stored is in the{" "}
           <Link href="/privacy" className="underline">
             Privacy Policy
           </Link>

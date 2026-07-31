@@ -7,8 +7,10 @@ const FROM_ADDRESS = process.env.RESEND_FROM_EMAIL || "Atlus Pay <onboarding@res
 // Called by the Atlus desktop app's checkout.js (or the extension's
 // background.js) right after a payment succeeds (fire-and-forget - a
 // failure here doesn't undo the payment, it just means no confirmation
-// email goes out). Records the transaction and, if the paying wallet has
-// a known email, sends a summary.
+// email goes out). Records the transaction and, if the paying wallet
+// happens to have a known email on file, sends a summary. There's no
+// account system, so in practice this lookup won't find one, kept as a
+// harmless no-op rather than ripped out, in case that ever changes.
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
 
@@ -16,10 +18,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "amount is required" }, { status: 400 });
   }
 
-  // walletAddress is optional: the app or extension can be used without
-  // ever going through website onboarding, in which case the paying
-  // wallet is genuinely unknown. The transaction still gets recorded;
-  // only the confirmation email gets skipped.
+  // walletAddress is optional; if it's missing the transaction still gets
+  // recorded, only the confirmation email gets skipped.
   const walletAddress = body.walletAddress ? String(body.walletAddress) : null;
   const amount = String(body.amount);
   const merchant = body.merchant ? String(body.merchant) : null;
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     // Best-effort email lookup. A transaction still gets recorded above
-    // even if this wallet has no onboarded email. It just means no email
+    // even if this wallet has no email on file. It just means no email
     // goes out.
     const { data: user } = await supabaseAdmin
       .from("users")

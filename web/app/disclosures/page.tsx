@@ -8,14 +8,15 @@ export default function DisclosuresPage() {
     <LegalLayout title="Risk & Third-Party Disclosures" lastUpdated="July 29, 2026">
       <LegalSection title="Current status">
         <p>
-          Website account setup (email and wallet connection) runs on the
-          Sepolia test network. Checkout payments made through the Atlus
-          desktop app are real: the app sends real USDC on the Base network
-          directly to Bitrefill to buy a real gift card for whichever
-          retailer you picked. Atlus only works with retailers it has
-          individually verified, not every checkout, see the list inside the
-          app. Everything below describes the product as it actually runs
-          today, not a future state.
+          The Atlus Pay website is informational only, it does not connect
+          to a wallet or move funds. Checkout payments happen entirely
+          inside the Atlus desktop app and are real: the app sends real USDC
+          on the Base network directly to Bitrefill to buy a real gift card
+          for whichever retailer you picked. There is no test network or
+          sandbox mode anywhere in the payment path. Atlus only works with
+          retailers it has individually verified, not every checkout, see
+          the list inside the app. Everything below describes the product
+          as it actually runs today, not a future state.
         </p>
       </LegalSection>
 
@@ -25,29 +26,15 @@ export default function DisclosuresPage() {
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
               Supabase
             </span>{" "}
-            stores account and transaction records.
+            stores transaction records.
           </li>
           <li>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
-              Resend
+              Reown (WalletConnect)
             </span>{" "}
-            delivers transaction confirmation emails.
-          </li>
-          <li>
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
-              Reown (WalletConnect) and RainbowKit
-            </span>{" "}
-            provide the wallet connection interface. The website uses
-            RainbowKit&rsquo;s injected-wallet flow, the desktop app pairs
-            with your wallet by QR code through WalletConnect directly,
-            since a desktop app can&rsquo;t reach a browser-extension wallet
-            the way a webpage can.
-          </li>
-          <li>
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
-              wagmi and viem
-            </span>{" "}
-            handle the underlying blockchain read and write calls.
+            provides the Atlus app&rsquo;s wallet connection: you scan a QR
+            code with your wallet app to pair, and every transaction is
+            signed by approving it there.
           </li>
           <li>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
@@ -56,8 +43,6 @@ export default function DisclosuresPage() {
             is what checkout payments actually settle in, real value, chosen
             specifically because its unit (a fixed 6 decimal standard) could
             be independently verified, unlike Bitrefill&rsquo;s ETH pricing.
-            Website-only actions like connecting a wallet during account
-            setup use the Sepolia test network instead.
           </li>
           <li>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
