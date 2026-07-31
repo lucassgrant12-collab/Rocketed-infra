@@ -322,6 +322,18 @@ Rather than describe the dashboard setting again and hope it gets set, added a r
 
 Ran the literal commands Railway would run, from the repo root, not from inside `web/`: `npm run build` (full `npm ci` + `next build`, all 7 routes prerender) and `npm run start` (real `next start`, confirmed serving with a `curl` `200`). Both work identically to running them inside `web/` directly, since that's all they do.
 
+## 2026-07-31 - Railway build failed a third time: `package-lock.json` was internally inconsistent about zod's major version
+
+The root-detection fix above worked (Railpack found and ran the root `package.json` correctly), but `npm --prefix web ci` then failed: `Missing: zod@3.25.76 from lock file`. `npm ci` is strict about the lockfile being fully self-consistent, `npm install` (what had produced this lockfile locally, after installing the `@x402/*` packages a few entries up) is not, so this had been silently wrong on disk the whole time without failing locally.
+
+Root cause, confirmed directly: `web/package-lock.json` had `zod` resolved to `4.4.3` at the top level, but at least one of the `@x402/*` packages declares an actual dependency (not just a peer) on `zod@^3.25.76`, and no properly nested v3 copy had been recorded to satisfy that alongside the top-level v4. Two different required major versions of the same package, only one correctly accounted for.
+
+Fixed by deleting `web/node_modules` and `web/package-lock.json` entirely and reinstalling from scratch, rather than trying to hand-edit the existing lockfile into consistency. The regenerated lockfile resolves `zod` to `3.25.76` throughout, no v4 anywhere, and `npm ci --dry-run` now succeeds cleanly.
+
+### Verified
+
+Same as the entry above, rerun end to end against the fresh lockfile: `npm ci --dry-run` clean, `next build` succeeds (all 7 routes), and the full root-level `npm run build` (the actual Railway command, `npm --prefix web ci && npm --prefix web run build`) succeeds from a cold `node_modules`, not just from an already-warm one.
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):
