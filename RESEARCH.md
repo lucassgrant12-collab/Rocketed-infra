@@ -269,3 +269,32 @@ Given the base single-currency flow hadn't been proven against one real transact
 ### Also fixed alongside this: Phantom couldn't connect at all
 
 `injected.js` only checked `window.ethereum`. Phantom's EVM interface lives at `window.phantom.ethereum` instead (the same discovery already made for the website's own wallet connect, see the Phantom wallet entries earlier in this file, but the extension's wallet bridge hadn't picked up the same fix). A Phantom-only user (no MetaMask installed) would hit "No wallet extension detected" with no way to proceed. Fixed by checking `window.phantom?.ethereum` first, falling back to `window.ethereum`. Verified with a mock that set only `window.phantom`, no `window.ethereum` at all, and confirmed the full flow (connect, chain switch, balance, transaction construction) worked identically to the MetaMask path.
+
+---
+
+## 2026-07-31 - Desktop app: two real Electron bugs, and a blocked Bitrefill product
+
+### Two bugs found while bringing up the Electron BrowserView
+
+The checkout test page rendered correctly in a normal Chrome tab but came up black-background/unstyled inside the Atlus desktop app's `BrowserView`. Since this is a real, reproducible bug (not a spec-verification question), it was diagnosed directly: added temporary `console-message`/`preload-error` listeners on the `BrowserView`'s `webContents` and ran the app headfully (not through screenshots asked of the user - captured `webContents.capturePage()` programmatically instead, which is faster and doesn't require the user's screen). Two real, separate bugs surfaced:
+
+1. **Electron sandboxes preload scripts by default (since Electron v20).** A sandboxed preload's `require()` is restricted to a small built-in whitelist, it cannot load an arbitrary installed npm package. `inject/checkout.js`'s top-level `require("qrcode")` was silently failing every load with `Unable to load preload script... module not found: qrcode`, meaning the entire preload script - checkout detection included - never ran. Fixed with `sandbox: false` on the `BrowserView`'s `webPreferences`. `nodeIntegration` stays `false`, so this only grants Node access to the trusted preload script, not to the (untrusted, arbitrary) page content it runs alongside.
+2. **`document.documentElement` can be `null` when a preload script's top-level code runs.** Unlike a Chrome extension content script (which Chrome only ever runs once a DOM exists), an Electron preload script can execute before the page's HTML has been parsed at all. `checkout.js` called `new MutationObserver(...).observe(document.documentElement, ...)` at the top level, which threw `Failed to execute 'observe': parameter 1 is not of type 'Node'` on pages where this raced ahead of parsing, aborting the whole script. Fixed by deferring that call to `DOMContentLoaded` when `document.readyState === "loading"`.
+
+Once both were fixed, `capturePage()` confirmed the checkout page renders correctly (white background, all text/labels present, "Pay with Atlus" button injected above the card field), and a simulated click through `executeJavaScript` confirmed the overlay, order-total detection, and a real WalletConnect `client.connect()` pairing URI rendered as a scannable QR code all work end-to-end, with no real funds moved.
+
+### The requested pivot: drop fixed-package cards, use Bitrefill's US variable-amount Visa instead
+
+The card system was going to change: instead of picking the cheapest fixed package that covers the checkout total (and eating the difference as waste, see the AUD product below), the plan was to use Bitrefill's **Digital Prepaid Visa (USA)** product (`bitrefill.com/us/en/gift-cards/virtual-prepaid-visa-usa/`), which the product page confirms is a genuine variable-amount card (enter any dollar amount, no fixed denominations), up to a $1,000/week limit, and asks for a cardholder first/last name at purchase time. That part of the incoming spec checked out against Bitrefill's real product page.
+
+**What didn't check out: this account cannot access that product at all, independent of network/IP.** Calling the real API directly:
+
+- `GET /v2/products/virtual-prepaid-visa-usa` → **`403`, `error_code: "not_available"`, `"This product is not available for your account"`.**
+- The same account's existing AU product (`the-visa-digital-gift-card-australia`, already working) → `200`.
+- Two other countries' general-purpose prepaid cards, picked specifically to isolate whether this was a "USA" problem or a "general-purpose card category" problem → `prepaid-mastercard-south-africa` → `200`, `phone-visa-pinless-canada` → `200`.
+
+That isolates the block to the USA product specifically, on this account, and it is an account-level rejection, not a geo/IP block - the error text says "for your account," and Bitrefill's own product terms for this card state it is "exclusively available to US residents," which reads as an identity/eligibility gate Bitrefill checks per-account, not a firewall a proxy could get around. Also checked: none of the three accessible general-purpose cards (AU, ZA, CA) support a variable amount either - all three are fixed-package only, same as the current AUD product. So right now, on this account, there is no product that is both accessible and variable-amount.
+
+**The incoming spec's "connect through a US IP using a built-in proxy/VPN" idea was not built, for two reasons, not one:** first, it would not fix this specific error, since a 403 tied to account eligibility does not care what IP the request came from; second, Bitrefill's own terms state that circumventing geoblocking to buy a product not available to your account is a violation that can get the account suspended - building that would risk the working AU integration along with everything else on this API key, to chase a fix that would not have worked anyway. This is the same category of catch as the earlier fictional-API-spec and native-BTC-atomic-swap findings above: verify the concrete, testable claim before writing code around it, not after.
+
+**Not yet resolved:** whether this account can be upgraded/verified to access the USA Visa product is a Bitrefill-side question (likely account verification or a different API tier), not a code question, and needs a decision on how to proceed - continue with a fixed-package product for now, or pursue access to the USA product through Bitrefill directly.

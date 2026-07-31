@@ -240,6 +240,20 @@ Everything short of an actual real-money transaction, since that requires real B
 - The Digital Prepaid Visa product's real `redemption_info` format is unconfirmed, see [coordinator/README.md](coordinator/README.md)'s "Unverified" section. The parser is a best guess until a real order is placed.
 - No real `BITREFILL_API_KEY` or `BITREFILL_VISA_PRODUCT_ID` configured yet, so the actual send-transaction-through-to-card-fill path has not been run for real.
 
+## 2026-07-31 - Desktop app: BrowserView render bug fixed, Bitrefill USA Visa blocked
+
+Picked back up the Electron desktop app pivot (shell UI, `inject/checkout.js` preload, WalletConnect IPC in `main.js` - all already scaffolded from the prior session). The checkout test page was rendering black/unstyled inside the app's `BrowserView` while working fine in a normal Chrome tab. Full diagnosis and reasoning in [RESEARCH.md](RESEARCH.md#2026-07-31---desktop-app-two-real-electron-bugs-and-a-blocked-bitrefill-product).
+
+### Fixed
+
+- Two real bugs in `desktop/main.js` and `desktop/inject/checkout.js`: Electron's default preload sandbox was silently blocking `require("qrcode")`, and `document.documentElement` was `null` when the preload's top-level `MutationObserver.observe()` call ran. Diagnosed by adding temporary console/preload-error logging and using `webContents.capturePage()` to verify visually without needing the user's screen, per earlier feedback to stop relying on slow screenshot loops.
+- Verified after fixing: checkout page renders correctly (screenshot confirmed), "Pay with Atlus" button injects correctly, clicking it opens the overlay, detects the $49.99 total, and a real WalletConnect `connect()` call returns a pairing URI rendered as a QR code, all with zero real funds moved.
+- Debug instrumentation removed from `main.js` afterward, back to the clean `loadURL("https://www.google.com")` default.
+
+### Blocked, not built: the USA Visa card pivot
+
+The request was to drop fixed-package cards (and the overpay/waste-refund logic) in favor of Bitrefill's variable-amount **Digital Prepaid Visa (USA)**. Verified the product itself is real (confirmed against Bitrefill's own product page: genuine any-amount card, $1,000/week cap, asks for cardholder name). But a direct call to the real API, `GET /v2/products/virtual-prepaid-visa-usa`, returns `403 not_available` for this account, while the existing AU product and two other countries' general-purpose cards (South Africa, Canada) all return `200` on the same key. This isolates the block to this one product, at the account level, not a network/IP issue. Bitrefill's own terms say circumventing geoblocking for a product not available to your account risks suspension, so the incoming spec's "connect via a US IP through a built-in proxy/VPN" was deliberately not built. This needs a decision from the project owner on how to proceed (pursue Bitrefill account access for the USA product, or keep building on a fixed-package product for now) before the card-system change can move forward.
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):
