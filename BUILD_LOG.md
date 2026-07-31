@@ -294,6 +294,22 @@ The website (`web/`) still described the old browser-extension product throughou
 
 `npx tsc --noEmit` and `next build` both pass cleanly, all 7 routes still prerender. Confirmed against the live dev server that the new copy is actually being served, not just compiling.
 
+## 2026-07-31 - Fixed the real Railway build failure: wagmi/RainbowKit version mismatch + an unresolvable optional dependency
+
+The website's Railway deployments had been failing to build for a while (the earlier-diagnosed "Root Directory" monorepo setting was suspected but never confirmed as the actual cause). Before pushing more commits, reproduced the failure locally with `npm ci --dry-run`, which Railway actually runs, instead of trusting `next build` against an already-installed `node_modules` (which had been silently tolerating the problem).
+
+### Root cause 1: `wagmi@^3.7.4` alongside `@rainbow-me/rainbowkit@^2.2.11`
+
+`npm ci` failed immediately with `ERESOLVE`: RainbowKit 2.x's published peer dependency is `wagmi@^2.9.0`, and RainbowKit has no release yet that supports wagmi v3 (checked directly, `npm view @rainbow-me/rainbowkit peerDependencies` on the latest published version still says `^2.9.0`). `npm install` (what had been run locally, historically) only warns on this, it doesn't fail, which is exactly why this had never surfaced locally. Fixed by downgrading `wagmi` to `^2.19.5` (latest v2). Checked the codebase's actual wagmi usage first (`WagmiProvider`, `useAccount`, `createConfig`, `http`, in `lib/wagmi.ts`, `providers.tsx`, `OnboardingCard.tsx`, `WalletBridge.tsx`) - all stable APIs unchanged between v2 and v3, so this was a safe downgrade, not a rewrite.
+
+### Root cause 2: an unresolvable optional dependency, only visible after fixing root cause 1
+
+With the lockfile regenerated, `next build` (Turbopack) surfaced a second, unrelated failure: `Module not found: Can't resolve '@x402/core/client'`, traced through `@rainbow-me/rainbowkit` → `@wagmi/connectors`'s Coinbase "Base Account" connector → `@base-org/account` → `@coinbase/cdp-sdk`, which has a dynamic `import()` of `@x402/*` packages (Coinbase's agentic-payment protocol, `peerDependenciesMeta` confirms these are marked `optional: true`). Turbopack resolves that import eagerly at build time regardless of the "optional" marking and hard-fails when it's missing. Removing the `coinbaseWallet` connector from `lib/wagmi.ts` did **not** fix it (RainbowKit's own core bundle still references the same code path regardless of which wallets are selected), which ruled out a tree-shaking fix. The actual fix: installed the four optional peers directly (`@x402/core`, `@x402/evm`, `@x402/extensions`, `@x402/svm`, all `^2.19.0` per `cdp-sdk`'s own peerDependencies range) so the bundler has something real to resolve, even though nothing in this app ever calls that code path. `coinbaseWallet` was restored to the connector list afterward and the build reverified clean with it back in, confirming it was never actually the problem.
+
+### Verified
+
+`npm ci --dry-run` succeeds cleanly (one unrelated, non-fatal peer warning from a transitive `valtio`/`use-sync-external-store` dependency, not a hard error), and `next build` completes with all 7 routes prerendering correctly, both re-run twice to confirm.
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):
