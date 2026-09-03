@@ -354,6 +354,31 @@ User pointed out the website still ran a full email + wallet-connect onboarding 
 
 `npm ci --dry-run` clean, `next build` succeeds (all 7 routes, noticeably faster: 7s compile vs 13-24s before), and a running `next start` spot-checked: homepage shows the real retailer count (52) with no "Sepolia" anywhere, all four legal pages return `200`.
 
+## 2026-09-03 - WalletConnect sessions are reused; a real Windows installer builds
+
+Two real, previously-flagged gaps closed in `desktop/`.
+
+### Fixed: re-pairing on every single payment
+
+`onPayClick()` in `checkout.js` called `wallet:connect` unconditionally, so even a second payment moments after the first made the user scan a fresh QR code, despite an approved session sitting right there. Flagged as a real bug (not a design tradeoff) back in the [2026-07-31 website-onboarding entry](RESEARCH.md#2026-07-31---website-onboarding-dropped-it-never-actually-connected-to-the-app), fixed now:
+
+- `checkout.js` checks a new `wallet:status` IPC call first, only falling back to a real QR pairing when there's nothing to reuse.
+- `main.js` tracks `activeSession` at module scope (moved earlier, restructured around a shared `sessionAddress()` helper), listens for `session_delete`/`session_expire` to clear it when the wallet side ends things, and clears it on any failed `wallet:sendTransaction` too, so a stale reused session falls back to a fresh pairing on retry instead of failing silently forever.
+- `walletconnect.js` now passes `storageOptions: { database: <path inside app.getPath("userData")> }` to `SignClient.init()`, instead of leaving the SDK's default (a relative path tied to the process's working directory at launch, not the same between `npm start` and a packaged app). `main.js` calls a new `restoreActiveSession()` on startup, which reads `client.session.getAll()` from that same storage, so a still-valid session survives closing and reopening the app, not just staying open.
+- Added a small **Wallet** section to the settings window (`wallet:status`/`wallet:disconnect` IPC, exposed narrowly through `settings-preload.js`) so there's a deliberate way to switch wallets, since the only other way a session ever clears is expiry or the wallet app disconnecting it.
+
+### Verified
+
+Syntax-checked all changed files, then a real regression pass: launched the app fresh (confirmed `SignClient.init()` doesn't error against the new `storageOptions`, and `wallet:status` correctly reports not-connected with no prior session), screenshotted the settings window to confirm the new Wallet section renders correctly, then ran the full checkout flow end to end (`webContents.capturePage()`, no manual screenshots) confirming the status-check branch correctly falls through to a real WalletConnect pairing exactly as before, no regression. Separately verified the storage path itself, independent of a real pairing: wrote and read back a key directly through `@walletconnect/keyvaluestorage`'s `KeyValueStorage` class pointed at the same configured path, confirmed the file actually lands in Electron's `userData` directory.
+
+### Also: a real installer builds now
+
+Added `electron-builder` (`desktop/package.json`'s new `build` config, `npm run dist`), targeting a Windows NSIS installer. Ran it for real: produces a working `Atlus Setup 0.1.0.exe` (~83MB) in `desktop/dist/`. Not code-signed (no certificate yet), so Windows SmartScreen will flag it as an unknown publisher, a real cost to solve later, not a code problem. Hosting it as a real download link is still blocked on GitHub CLI auth (`gh`) for creating a proper Release, not yet done on this machine.
+
+### A real near-miss caught mid-session
+
+While reviewing the diff before committing, three already-committed files (`coordinator/.env.example`, `coordinator/README.md`, `desktop/README.md`) turned out to be missing from disk, showing as deleted in `git status` despite nothing in this session's own actions touching them. Restored cleanly with `git restore` since they were already committed and nothing was staged, no data actually lost, but logging it here since the cause wasn't identified and is worth staying alert for.
+
 ### Slide format convention (reference)
 
 Each slide in `SLIDES.md` follows this structure (mirrors the reference screenshot the user provided):

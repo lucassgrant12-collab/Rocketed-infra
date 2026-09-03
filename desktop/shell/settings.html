@@ -67,9 +67,52 @@
         font-size: 12px;
         color: #16a34a;
       }
+      .wallet-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        background: #f5f5f5;
+        border-radius: 8px;
+        margin-bottom: 8px;
+      }
+      .wallet-row span {
+        font-size: 13px;
+      }
+      #walletAddress {
+        font-family: monospace;
+        font-size: 12px;
+        color: #525252;
+      }
+      #disconnectBtn {
+        margin: 0;
+        padding: 6px 12px;
+        font-size: 12px;
+        background: #fff;
+        color: #171717;
+        border: 1px solid #d4d4d4;
+      }
+      hr {
+        border: none;
+        border-top: 1px solid #e5e5e5;
+        margin: 20px 0;
+      }
     </style>
   </head>
   <body>
+    <h1>Wallet</h1>
+    <div class="wallet-row">
+      <span id="walletAddress">Not connected</span>
+      <button id="disconnectBtn" type="button" hidden>Disconnect</button>
+    </div>
+    <p class="hint">
+      Atlus stays paired to whichever wallet last approved a payment, so it
+      doesn't ask for a fresh QR scan every time. Disconnect here to pair a
+      different wallet next time you pay.
+    </p>
+
+    <hr />
+
     <h1>Cardholder &amp; billing info</h1>
     <p class="hint">
       Used to fill checkout forms after a card is issued. Enter your own real

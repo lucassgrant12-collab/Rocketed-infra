@@ -42,6 +42,8 @@ MetaMask and Phantom are themselves browser extensions. They don't exist inside 
 
 **Balance checks bypass the wallet entirely.** A balance is public on-chain data, no signature or wallet permission needed to read it, so `checkout.js` queries Base's official public RPC (`https://mainnet.base.org`) directly with a plain `eth_call`, instead of routing a read through a session that's reserved for the one thing it actually needs to authorize: the real transfer.
 
+**The session is reused, not re-paired on every payment.** `checkout.js` checks `wallet:status` before doing anything else, and only shows a QR code when there's genuinely no usable session, covering a second payment in the same app run without touching the phone again. `walletconnect.js` also points the SDK's storage at a file inside Electron's own per-user data directory instead of its default (a relative path tied to whatever the process's working directory happens to be at launch, not guaranteed to be the same between a dev run and a packaged one), so `main.js` can restore a still-valid session from disk on startup too, the same fix covering an app restart, not just staying open. A session only goes away by expiring (WalletConnect's own ~7 day default), the wallet disconnecting it, or the user hitting **Disconnect** in Settings, there's no way to trigger a fresh pairing otherwise, which is deliberate: re-pairing on every payment was a real bug, not a safety feature.
+
 ## What's still shared with the extension version
 
 The ERC-20 `transfer`/`balanceOf` calldata encoding and the overlay's two-step confirmation (amount, then an explicit second click if the card costs more than the checkout total) are unchanged. See `extension/content.js` and `RESEARCH.md` for the reasoning, it still applies here.
@@ -83,6 +85,14 @@ npm start
 ```
 
 Needs the coordinator (`coordinator/`) and the website (`web/`) running for the payment and email-confirmation steps to work, same as the extension.
+
+## Building a real installer
+
+```
+npm run dist
+```
+
+Runs `electron-builder`, producing a real Windows installer (`dist/Atlus Setup <version>.exe`, NSIS, lets the user pick an install location) instead of running from source with `npm start`. Not code-signed yet, Windows SmartScreen will flag it as from an unknown publisher until that's set up, that's a real cost of a code-signing certificate, not something fixable in code.
 
 ## Real-money warning
 

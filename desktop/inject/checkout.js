@@ -485,15 +485,27 @@ async function onPayClick() {
   let account = null;
 
   try {
-    const { uri, sessionId } = await ipcRenderer.invoke("wallet:connect");
-    await renderQrCode(qrEl, uri);
-    qrEl.style.display = "block";
+    // Reuse an already-approved session instead of pairing fresh every
+    // time, this covers both a second payment in the same app session and
+    // one after reopening the app (main.js restores a session from disk
+    // on startup if one's still there). Only fall back to a real QR
+    // pairing when there's genuinely nothing to reuse.
+    const status = await ipcRenderer.invoke("wallet:status");
+    if (status.connected) {
+      account = status.address;
+      setStatus(overlay, "");
+      balanceEl.textContent = "Using your connected wallet...";
+    } else {
+      const { uri, sessionId } = await ipcRenderer.invoke("wallet:connect");
+      await renderQrCode(qrEl, uri);
+      qrEl.style.display = "block";
 
-    setStatus(overlay, "Waiting for wallet approval...");
-    const { address } = await ipcRenderer.invoke("wallet:awaitApproval", sessionId);
-    account = address;
-    qrEl.style.display = "none";
-    setStatus(overlay, "");
+      setStatus(overlay, "Waiting for wallet approval...");
+      const { address } = await ipcRenderer.invoke("wallet:awaitApproval", sessionId);
+      account = address;
+      qrEl.style.display = "none";
+      setStatus(overlay, "");
+    }
 
     const balanceHex = await readUsdcBalance(account);
     balanceEl.textContent = `Wallet balance: ${formatTokenAmount(balanceHex, USDC_DECIMALS)} USDC`;

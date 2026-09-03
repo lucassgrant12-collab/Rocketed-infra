@@ -31,9 +31,11 @@ const { getWalletConnectClient } = require("./walletconnect");
 const { readSettings, writeSettings } = require("./settings");
 
 const SHELL_HEIGHT = 44;
+const BASE_CHAIN = "eip155:8453";
 
 let mainWindow;
 let browserView;
+let activeSession = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -155,7 +157,63 @@ ipcMain.handle("settings:set", (event, patch) => writeSettings(patch));
 // WalletConnect IPC: the overlay (inside the BrowserView's page content)
 // asks the main process to pair with a wallet and sign transactions.
 // SignClient itself never runs in a renderer, only here.
+//
+// Sessions are reused, not re-paired on every payment. Earlier versions
+// of checkout.js called wallet:connect unconditionally on every single
+// "Pay with Atlus" click, meaning the user had to scan a fresh QR code
+// even for a second payment moments after the first, despite already
+// having an approved WalletConnect session sitting right there unused.
+// checkout.js now checks wallet:status first and only falls back to a
+// real pairing when there's genuinely no usable session, restoring one
+// from disk on startup (see walletconnect.js's storageOptions) covers the
+// same problem across app restarts, not just within one.
 // ---------------------------------------------------------------------
+
+async function restoreActiveSession() {
+  const client = await getWalletConnectClient();
+
+  client.on("session_delete", ({ topic }) => {
+    if (activeSession?.topic === topic) activeSession = null;
+  });
+  client.on("session_expire", ({ topic }) => {
+    if (activeSession?.topic === topic) activeSession = null;
+  });
+
+  // client.session.getAll() reflects whatever storageOptions persisted
+  // from a previous run. A session found here already went through real
+  // wallet approval before, it just wasn't cleanly disconnected, so it's
+  // safe to treat as connected without asking the user to do anything.
+  const sessions = client.session.getAll();
+  const usable = sessions.find((session) => session.namespaces?.eip155?.accounts?.length);
+  if (usable) activeSession = usable;
+}
+
+function sessionAddress(session) {
+  const account = session.namespaces.eip155.accounts[0]; // "eip155:8453:0xabc..."
+  return account.split(":")[2];
+}
+
+ipcMain.handle("wallet:status", () => {
+  if (!activeSession) return { connected: false, address: null };
+  return { connected: true, address: sessionAddress(activeSession) };
+});
+
+// Lets the user deliberately switch wallets from the settings window,
+// the only other way a session ever clears is expiry (~7 days) or the
+// wallet app itself disconnecting.
+ipcMain.handle("wallet:disconnect", async () => {
+  if (!activeSession) return { connected: false };
+  const client = await getWalletConnectClient();
+  const topic = activeSession.topic;
+  activeSession = null;
+  try {
+    await client.disconnect({ topic, reason: { code: 6000, message: "User disconnected" } });
+  } catch {
+    // Already gone on the wallet's side, nothing left to clean up there,
+    // clearing activeSession above is what actually matters here.
+  }
+  return { connected: false };
+});
 
 ipcMain.handle("wallet:connect", async () => {
   const client = await getWalletConnectClient();
@@ -164,7 +222,7 @@ ipcMain.handle("wallet:connect", async () => {
     requiredNamespaces: {
       eip155: {
         methods: ["eth_sendTransaction"],
-        chains: ["eip155:8453"], // Base
+        chains: [BASE_CHAIN],
         events: ["chainChanged", "accountsChanged"],
       },
     },
@@ -194,35 +252,41 @@ ipcMain.handle("wallet:awaitApproval", async (event, sessionId) => {
   const session = await promise;
   pendingSessions.delete(sessionId);
 
-  const account = session.namespaces.eip155.accounts[0]; // "eip155:8453:0xabc..."
-  const address = account.split(":")[2];
-
   activeSession = session;
-  return { address, topic: session.topic };
+  return { address: sessionAddress(session), topic: session.topic };
 });
-
-let activeSession = null;
 
 ipcMain.handle("wallet:sendTransaction", async (event, { to, data, value }) => {
   if (!activeSession) throw new Error("No active wallet session");
 
   const client = await getWalletConnectClient();
-  const [account] = activeSession.namespaces.eip155.accounts;
-  const from = account.split(":")[2];
+  const from = sessionAddress(activeSession);
 
-  const txHash = await client.request({
-    topic: activeSession.topic,
-    chainId: "eip155:8453",
-    request: {
-      method: "eth_sendTransaction",
-      params: [{ from, to, data, value: value ?? "0x0" }],
-    },
-  });
-
-  return { txHash };
+  try {
+    const txHash = await client.request({
+      topic: activeSession.topic,
+      chainId: BASE_CHAIN,
+      request: {
+        method: "eth_sendTransaction",
+        params: [{ from, to, data, value: value ?? "0x0" }],
+      },
+    });
+    return { txHash };
+  } catch (error) {
+    // A reused session that's actually gone stale (wallet-side disconnect
+    // that didn't sync back, an expiry the events above didn't catch in
+    // time) surfaces here as a failed request. Clearing it means the next
+    // payment attempt falls back to a fresh pairing instead of repeatedly
+    // failing against a session that will never work again.
+    activeSession = null;
+    throw error;
+  }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  createWindow();
+  await restoreActiveSession();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

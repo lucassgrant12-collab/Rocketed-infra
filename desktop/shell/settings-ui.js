@@ -12,6 +12,21 @@ const fields = {
   blocklist: document.getElementById("blocklist"),
 };
 const statusEl = document.getElementById("status");
+const walletAddressEl = document.getElementById("walletAddress");
+const disconnectBtn = document.getElementById("disconnectBtn");
+
+async function loadWalletStatus() {
+  const { connected, address } = await window.atlusSettings.walletStatus();
+  walletAddressEl.textContent = connected ? address : "Not connected";
+  disconnectBtn.hidden = !connected;
+}
+
+disconnectBtn.addEventListener("click", async () => {
+  disconnectBtn.disabled = true;
+  await window.atlusSettings.walletDisconnect();
+  disconnectBtn.disabled = false;
+  await loadWalletStatus();
+});
 
 async function load() {
   const settings = await window.atlusSettings.get();
@@ -23,6 +38,7 @@ async function load() {
   fields.state.value = settings.billingState;
   fields.zip.value = settings.billingZip;
   fields.blocklist.value = (settings.merchantBlocklist || []).join("\n");
+  await loadWalletStatus();
 }
 
 document.getElementById("saveBtn").addEventListener("click", async () => {
