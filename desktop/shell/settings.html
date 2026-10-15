@@ -1,171 +1,183 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Atlus Pay Settings</title>
+    <title>Atlus settings</title>
     <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
       body {
-        margin: 0;
-        padding: 24px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        color: #171717;
-        background: #fff;
+        background: #313338;
+        color: #dbdee1;
+        font-family: "gg sans", "Noto Sans", "Segoe UI", system-ui, sans-serif;
+        font-size: 15px;
+        padding: 28px 32px 40px;
       }
-      h1 {
-        font-size: 16px;
-        margin: 0 0 4px;
+
+      ::-webkit-scrollbar { width: 14px; height: 14px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb {
+        background: #1a1b1e;
+        border: 3px solid transparent;
+        border-radius: 8px;
+        background-clip: padding-box;
       }
-      p.hint {
-        margin: 0 0 20px;
+      :focus-visible { outline: 2px solid #4f8df7; outline-offset: 2px; }
+
+      h1 { margin: 0 0 20px; font-size: 20px; font-weight: 700; color: #f2f3f5; }
+
+      .card {
+        background: #2b2d31;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      h2 {
+        margin: 0 0 12px;
         font-size: 12px;
-        color: #737373;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: #b5bac1;
       }
+      .hint { margin: 10px 0 0; font-size: 13px; line-height: 1.45; color: #949ba4; }
+
       label {
         display: block;
+        margin: 14px 0 6px;
         font-size: 12px;
-        font-weight: 600;
-        margin: 12px 0 4px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: #b5bac1;
       }
-      input {
+      .card h2 + label { margin-top: 0; }
+      input, textarea {
         width: 100%;
-        box-sizing: border-box;
-        padding: 8px 10px;
-        font-size: 13px;
-        border: 1px solid #d4d4d4;
-        border-radius: 6px;
+        padding: 10px;
+        border: 0;
+        border-radius: 3px;
+        background: #1e1f22;
+        color: #dbdee1;
+        font: inherit;
+        font-size: 15px;
       }
-      .row {
-        display: flex;
-        gap: 10px;
-      }
-      .row > div {
-        flex: 1;
-      }
-      textarea {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 8px 10px;
-        font-size: 13px;
-        border: 1px solid #d4d4d4;
-        border-radius: 6px;
-        font-family: inherit;
-        min-height: 60px;
-      }
-      button {
-        margin-top: 20px;
-        padding: 10px 18px;
-        background: #171717;
-        color: #fff;
-        border: none;
-        border-radius: 8px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      #status {
-        margin-left: 10px;
-        font-size: 12px;
-        color: #16a34a;
-      }
+      textarea { min-height: 84px; resize: vertical; }
+      input::placeholder, textarea::placeholder { color: #6d6f78; }
+      .row { display: flex; gap: 12px; }
+      .row > div { flex: 1; min-width: 0; }
+
       .wallet-row {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        gap: 12px;
         padding: 10px 12px;
-        background: #f5f5f5;
-        border-radius: 8px;
-        margin-bottom: 8px;
-      }
-      .wallet-row span {
-        font-size: 13px;
+        background: #1e1f22;
+        border-radius: 4px;
       }
       #walletAddress {
-        font-family: monospace;
-        font-size: 12px;
-        color: #525252;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 14px;
+        color: #b5bac1;
       }
-      #disconnectBtn {
-        margin: 0;
-        padding: 6px 12px;
-        font-size: 12px;
-        background: #fff;
-        color: #171717;
-        border: 1px solid #d4d4d4;
+
+      button {
+        height: 32px;
+        padding: 0 16px;
+        border: 0;
+        border-radius: 3px;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
       }
-      hr {
-        border: none;
-        border-top: 1px solid #e5e5e5;
-        margin: 20px 0;
-      }
+      #saveBtn { background: #4f8df7; color: #fff; }
+      #saveBtn:hover { background: #3f7be0; }
+      #disconnectBtn { background: #da373c; color: #fff; }
+      #disconnectBtn:hover:not(:disabled) { background: #a12828; }
+      #disconnectBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+      [hidden] { display: none !important; }
+
+      .actions { display: flex; align-items: center; gap: 12px; }
+      #status { font-size: 14px; color: #23a559; }
     </style>
   </head>
   <body>
-    <h1>Wallet</h1>
-    <div class="wallet-row">
-      <span id="walletAddress">Not connected</span>
-      <button id="disconnectBtn" type="button" hidden>Disconnect</button>
+    <h1>Settings</h1>
+
+    <section class="card">
+      <h2>Wallet</h2>
+      <div class="wallet-row">
+        <span id="walletAddress">Not connected</span>
+        <button id="disconnectBtn" type="button" hidden>Disconnect</button>
+      </div>
+      <p class="hint">
+        Atlus stays paired to the wallet that last approved a payment, so you
+        don't scan a QR code every time. Disconnect to pair a different wallet
+        the next time you pay.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Billing details</h2>
+      <p class="hint" style="margin: 0 0 4px">
+        Only used when a checkout asks for them. Enter your own real details,
+        a mismatch can make a store's address check fail.
+      </p>
+
+      <div class="row">
+        <div>
+          <label for="firstName">First name</label>
+          <input id="firstName" type="text" />
+        </div>
+        <div>
+          <label for="lastName">Last name</label>
+          <input id="lastName" type="text" />
+        </div>
+      </div>
+
+      <label for="line1">Address line 1</label>
+      <input id="line1" type="text" />
+
+      <label for="line2">Address line 2 (optional)</label>
+      <input id="line2" type="text" />
+
+      <div class="row">
+        <div>
+          <label for="city">City</label>
+          <input id="city" type="text" />
+        </div>
+        <div>
+          <label for="state">State</label>
+          <input id="state" type="text" />
+        </div>
+        <div>
+          <label for="zip">ZIP</label>
+          <input id="zip" type="text" />
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Blocked stores</h2>
+      <label for="blocklist" style="position:absolute;left:-9999px">Blocked store domains</label>
+      <textarea id="blocklist" placeholder="example.com&#10;another-store.com"></textarea>
+      <p class="hint">
+        One domain per line. Add a store here after you've confirmed it rejects
+        the codes Atlus buys. The Pay button still shows there, but Atlus
+        stops before any crypto is sent.
+      </p>
+    </section>
+
+    <div class="actions">
+      <button id="saveBtn" type="button">Save changes</button>
+      <span id="status"></span>
     </div>
-    <p class="hint">
-      Atlus stays paired to whichever wallet last approved a payment, so it
-      doesn't ask for a fresh QR scan every time. Disconnect here to pair a
-      different wallet next time you pay.
-    </p>
-
-    <hr />
-
-    <h1>Cardholder &amp; billing info</h1>
-    <p class="hint">
-      Used to fill checkout forms after a card is issued. Enter your own real
-      information, matching whatever identity Bitrefill's card is issued
-      under, since mismatched billing details can fail a merchant's address
-      check.
-    </p>
-
-    <div class="row">
-      <div>
-        <label for="firstName">Cardholder first name</label>
-        <input id="firstName" type="text" />
-      </div>
-      <div>
-        <label for="lastName">Cardholder last name</label>
-        <input id="lastName" type="text" />
-      </div>
-    </div>
-
-    <label for="line1">Billing address line 1</label>
-    <input id="line1" type="text" />
-
-    <label for="line2">Billing address line 2 (optional)</label>
-    <input id="line2" type="text" />
-
-    <div class="row">
-      <div>
-        <label for="city">City</label>
-        <input id="city" type="text" />
-      </div>
-      <div>
-        <label for="state">State</label>
-        <input id="state" type="text" />
-      </div>
-      <div>
-        <label for="zip">ZIP</label>
-        <input id="zip" type="text" />
-      </div>
-    </div>
-
-    <label for="blocklist">Merchant blocklist (one domain per line)</label>
-    <textarea
-      id="blocklist"
-      placeholder="example.com&#10;another-store.com"
-    ></textarea>
-    <p class="hint">
-      Add a domain here after you've personally confirmed a merchant rejects
-      the Atlus card. The Pay button still appears there, but confirming
-      payment is blocked before any crypto is sent.
-    </p>
-
-    <button id="saveBtn">Save</button>
-    <span id="status"></span>
 
     <script src="settings-ui.js"></script>
   </body>

@@ -53,7 +53,6 @@ const RETAILERS = [
   { name: "Tesco (UK)", domain: "tesco.com", productId: "tesco-uk", category: "Retail", type: "range" },
   { name: "ASDA (UK)", domain: "asda.com", productId: "asda-uk", category: "Retail", type: "range" },
   { name: "Argos (UK)", domain: "argos.co.uk", productId: "argos-uk", category: "Retail", type: "range" },
-  { name: "eBay Australia", domain: "ebay.com.au", productId: "ebay-aus", category: "Retail", type: "range" },
 
   // --- Electronics ---
   { name: "Best Buy", domain: "bestbuy.com", productId: "best-buy-usa", category: "Electronics", type: "range" },
@@ -91,6 +90,19 @@ const RETAILERS = [
   { name: "Roblox", domain: "roblox.com", productId: "roblox-usa", category: "Gaming", type: "range" },
   { name: "Google Play", domain: "play.google.com", productId: "google-play-usa", category: "Gaming", type: "range" },
 ];
+
+// Per-store display data (largest single purchase, currency, logo background
+// color) generated from Bitrefill's real product data by
+// scripts/sync-retailer-data.js. Optional: a retailer missing from it just
+// shows no "up to" figure, nothing depends on it to actually pay.
+let retailerData = {};
+try {
+  retailerData = require("./retailer-data.json");
+} catch {}
+for (const retailer of RETAILERS) {
+  const extra = retailerData[retailer.productId];
+  if (extra) Object.assign(retailer, extra);
+}
 
 function findByDomain(hostname) {
   const clean = hostname.replace(/^www\./, "").toLowerCase();

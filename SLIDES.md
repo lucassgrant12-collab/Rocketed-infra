@@ -338,3 +338,250 @@ export function LegalSection({ title, children }: { title: string; children: Rea
 ---
 
 <!-- Next slide: whichever real coordinator work happens next. Slide 8's mocked /api/pay and /api/reveal are the highest-risk piece still left to build for real, per RESEARCH.md's escrow proof-of-payment section. -->
+
+---
+---
+
+# Personal requested slides
+
+Separate from the deck above. These are for the school assignment itself (reflective/process slides using this project as the case study), not part of the Atlus presentation deck, kept here so they don't get mixed up with it.
+
+## Running tests/diagnostic
+
+**What happened:**
+While testing the desktop app, a checkout page that rendered correctly in a normal Chrome browser came up completely broken when loaded inside Atlus's own embedded browser window: black background, missing headings and text, unstyled form fields.
+
+**Issues:**
+The exact same page worked fine in a real browser, which ruled out the page itself and meant the problem had to be something specific to how the app was loading and displaying pages internally, not something visible just by looking at the page's own code.
+
+**Learning:**
+I learned that Electron (the framework the app is built with) sandboxes certain scripts by default, which can silently block them from loading code libraries they depend on, and that this kind of failure can break the entire page instead of just failing quietly on its own. I also learned that these scripts can run before the page has even finished loading, which caused a second, separate error once the first one was fixed.
+
+**Evidence:**
+Added temporary logging to the app and used a built-in screenshot function to compare the page's rendering before and after each fix. This confirmed both exact causes and showed the page rendering correctly, matching the working Chrome version, once both were fixed.
+
+## Choosing Electron
+
+**Choosing Electron:**
+The app needed to be its own standalone window the user shops inside, rather than a browser extension, so it wouldn't be subject to an extension store's review process and policies, something outside my control that could delay or block the project for reasons unrelated to whether the code actually worked. Electron was the option that fit this: it's the same framework real desktop apps like VS Code, Slack, and Discord are built with, and it let me build a full cross-platform desktop app using the same web code (HTML/CSS/JavaScript) I already had, rather than learning a separate native language just to get a window on screen.
+
+**How I connected my code to Electron:**
+Electron splits an app into two different kinds of process that can't directly access each other: a main process with full system access, and a renderer process, which is the actual window content, deliberately sandboxed for security. My checkout logic runs in the renderer, but signing a real transaction needs the main process, so I connected the two using Electron's inter-process communication (IPC) system, defined channels that pass messages back and forth between them. A preload script sits in between, code that's allowed to run with more privilege right alongside the page itself, which is what actually calls those IPC channels when the user needs to connect a wallet or send a payment.
+
+**What I learnt:**
+I learnt that Electron sandboxes preload scripts by default, meaning they can't load external code libraries unless that's explicitly turned off, which caused a real bug where my preload script failed to load at all with no obvious error. I also learnt to keep IPC channels scoped narrowly to what each window actually needs, for example, the settings window can only ask for settings data, not trigger a wallet payment, so a mistake or bug in one part of the app can't accidentally reach into a more sensitive part of it.
+
+**Sources:**
+- [electronjs.org](https://www.electronjs.org) - what Electron is and why it's used for real desktop apps.
+- [electronjs.org/docs/latest/tutorial/ipc](https://www.electronjs.org/docs/latest/tutorial/ipc) - how the main and renderer processes actually communicate.
+- [electronjs.org/docs/latest/tutorial/tutorial-preload](https://www.electronjs.org/docs/latest/tutorial/tutorial-preload) - preload scripts, the piece that let me bridge privileged code into the page safely.
+
+## Connecting
+
+**What happened:**
+Before writing any real code, I created a repository on GitHub to store the project, then connected it to a folder on my own computer using git, with VS Code as the editor I actually work in. This meant every change I made locally in VS Code could be saved as its own commit with a message explaining what changed and why, then pushed up to GitHub, rather than just having a folder of files with no record of how the project actually got built.
+
+**Evidence:**
+The repository's own commit history is the evidence. The project has 20 separate commits at this point, each with a clear message describing exactly what was built or fixed, for example:
+- "Fix Electron BrowserView render bugs; add merchant compatibility check and settings"
+- "Replace universal Visa card with per-retailer gift cards; Atlus app becomes a retailer directory"
+- "Reuse WalletConnect sessions instead of re-pairing on every payment; add a real installer build"
+
+That history is a real, checkable record of the project's actual development, not something written up after the fact.
+
+## Privacy
+
+**What I did:**
+I deliberately designed the app so that it never asks for, or has access to, more information than it actually needs. There's no sign-up, no password, and no stored identity, the only thing the app ever learns about a person is their public wallet address, and only when they're actually paying for something. Early on the website did have an account system (email plus a connected wallet), but I removed it once I realised it wasn't actually connected to how payments worked in the app itself, and was just collecting information for no real reason.
+
+**Why it matters:**
+A merchant a payment goes through never learns that crypto was involved at all, they just see an ordinary gift card or prepaid card being redeemed, the same as any other customer. Billing details, when a checkout form asks for them, are filled in directly on the user's own device and never pass through anything I control, so there's nothing for me to even have on file connecting someone's identity to a specific purchase.
+
+**Example:**
+If someone uses the app to pay at a store, I can see that *a* wallet address paid *an* amount at *a* store, for my own basic record keeping, but I have no name, no email, and no way to know who that wallet actually belongs to unless they tell me directly.
+
+**Evidence:**
+This is backed up by an actual Privacy Policy and a separate Anonymity page in the project, written to explain plainly and honestly where the real limits of this are, for example, that a blockchain transaction is still technically public and traceable if someone's wallet address has ever been linked to their identity elsewhere, like through an exchange that required ID. I didn't want to overstate the privacy of the app beyond what's actually true.
+
+**Code, `web/app/api/transactions/complete/route.ts`:**
+```ts
+const { error: insertError } = await supabaseAdmin.from("transactions").insert({
+  wallet_address: walletAddress,
+  amount,
+  merchant,
+  card_last4: cardLast4,
+});
+```
+This is the entire record a payment leaves behind, a wallet address, an amount, which store, and the last four digits of a card if there is one. No name, no email, nothing else, because there's genuinely nothing else being collected to store.
+
+## Deriving stages
+
+**What I did:**
+Rather than trying to build the entire project in one go, I broke it down into stages based on what each one actually depended on. Research and deciding on an approach had to come first, since it would have been pointless to start writing code for an idea that wasn't going to work. After that, the backend (the part that actually talks to the service issuing the gift cards) had to exist before I could build a working checkout experience on top of it, since there was nothing real to test a UI against otherwise.
+
+**How I derived them:**
+I worked this out by asking, for each piece, "what does this actually need to already exist in order to work?" rather than just building whatever seemed most exciting first. For example, I couldn't sensibly design the payment screen's UI until I knew what real data the backend would actually return, so UI work came after backend work, not before.
+
+**Example:**
+The rough real order ended up being: research and compare existing approaches, build and test a real backend connection, build the actual app around that backend, then go back and refine the interface and user experience once the core function was already working and provably correct.
+
+**Evidence:**
+This order is visible directly in the project's own commit history and build log, backend and API work happening first, with UI and user-experience refinements consistently coming later, once there was something real underneath them to refine.
+
+**Code, `web/package.json`:**
+```json
+"scripts": {
+  "predev": "node scripts/generate-retailer-count.js",
+  "dev": "next dev",
+  "prebuild": "node scripts/generate-retailer-count.js",
+  "build": "next build"
+}
+```
+A small, literal example of staging: the retailer count shown on the website has to be generated from the real backend data *before* the site itself builds, not after, so `predev`/`prebuild` are set up to always run first, automatically, rather than relying on me remembering to run them myself in the right order.
+
+## Finding and filling the checkout forms correctly
+
+**What happened:**
+A core part of the app is detecting a checkout form on a page it's never seen before, and correctly filling in the right fields once a payment is complete, without knowing in advance what that specific store's checkout page looks like.
+
+**Issues:**
+Checkout forms aren't standardised, different stores name their fields differently, and some don't even use a normal credit-card field at all, a lot of the gift cards my app buys get redeemed through a gift card or promo code field instead, not a card number field. On top of that, some checkout forms are built with frameworks like React that don't update properly if you just set a field's value directly, the form doesn't register it as a real change.
+
+**Learning:**
+I learnt to check multiple possible field patterns instead of one exact one, for example looking for a gift card field using several different likely names and attributes before giving up, so the app still works even if one specific store names things slightly differently than expected. I also learnt a specific trick for filling fields correctly on frameworks like React: you have to set the value using the browser's own native setter and then manually fire an "input" event, otherwise the page's own code doesn't notice the value ever changed.
+
+**Example:**
+If a store's gift card field is named differently than expected, the app still checks several other common patterns (like a general "promo code" field) before deciding there's genuinely nowhere to put the result, rather than just failing on the very first guess.
+
+**Code, `desktop/inject/checkout.js`:**
+```js
+const GIFT_CARD_CODE_SELECTORS = [
+  'input[name*="giftcard" i]',
+  'input[name*="gift-card" i]',
+  'input[placeholder*="gift card" i]',
+  'input[name*="promo" i]',
+  'input[placeholder*="promo code" i]',
+  'input[name*="voucher" i]',
+];
+
+function setNativeValue(field, value) {
+  const prototype = Object.getPrototypeOf(field);
+  const nativeSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  if (nativeSetter) nativeSetter.call(field, value);
+  else field.value = value;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.dispatchEvent(new Event("change", { bubbles: true }));
+}
+```
+The first part is the list of guesses for finding the right field. The second part is the React fix: setting `field.value` directly doesn't trigger React's own change detection, so the value has to be set through the browser's real native setter, then an `input` event has to be fired manually so the page actually notices.
+
+## UX
+
+**What I did:**
+I made several deliberate decisions to keep the actual experience of using the app as simple as possible, even when that meant removing things I'd already built. The clearest example is the app's home screen, originally it worked like a normal browser where you could type in any web address, but I replaced that with a simple searchable list of stores the app actually supports, since letting someone go anywhere implied the app could help them everywhere, when it can't.
+
+**Why it matters:**
+A good user experience means being honest about what the product can and can't do, not just making it look impressive. Showing a short, clear list of supported stores sets the right expectation immediately, instead of a user finding out the hard way, partway through checkout, that a store isn't supported.
+
+**Example:**
+The actual payment screen was also kept deliberately simple, it shows the amount, which currency it's being paid in, a warning about what's about to happen, and a clear two-step confirmation before any money moves, rather than burying that information or making it a single, easy-to-misclick button.
+
+**Evidence:**
+Earlier versions of the website had a lot more text and a full account sign-up flow on the homepage. I simplified this down to a single clear call to action once I realised the extra steps weren't actually connected to how someone pays in the real app, they were just extra friction with no real purpose.
+
+**Code, `desktop/shell/shell.js`:**
+```js
+// No free-text URL/search bar here on purpose: Atlus isn't a general
+// browser, navigation happens by picking a retailer on the home screen
+// (see home/home.js) or clicking a link on the site you're already on.
+// This strip is just back/forward/reload/home plus a read-only label of
+// where you currently are.
+```
+This comment sits right at the top of the file as a reminder of the actual decision, so future changes to this file stay consistent with it instead of someone (including me) quietly adding a search bar back in later without thinking about why it was removed.
+
+## UI: CSS, React.js learning
+
+**What I did:**
+The user interface for the website is built using React, through a framework called Next.js, with CSS handling all of the actual visual styling. Both of these were skills I actively built up over the course of this project rather than knowing beforehand.
+
+**Learning, CSS:**
+I went from only being able to make very basic elements, buttons, cards, simple padding, to understanding more deliberate layout techniques, like using flexible, gap-based spacing instead of manually setting margins on individual elements, which is more reliable and avoids spacing accidentally doubling up between elements.
+
+**Learning, React:**
+I learnt the difference between a component that just displays information and one that needs to track changing information over time, called state, for example, whether a search box's text has changed and the list on screen needs to update to match it. I also learnt about the difference between code that runs once when a page is first generated versus code that needs to run again every time something changes while someone's actually using the page.
+
+**Example:**
+A concrete example is the homepage's retailer search: typing into the search box updates a piece of state, and the page automatically re-filters and re-displays the list of stores to match, without me having to manually find and rewrite the list on screen myself every time.
+
+**Code, CSS, `desktop/home/index.html`:**
+```css
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+```
+This is the layout technique I mean, `gap` handles all the spacing between every card in the grid at once, evenly, instead of me manually adding a margin to every single card and having to account for it being doubled up wherever two cards sit next to each other.
+
+**Code, React, `web/components/LegalLayout.tsx`:**
+```tsx
+export function LegalSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h2 className="text-lg font-semibold">{title}</h2>
+      <div className="mt-2 space-y-3 text-sm leading-relaxed text-neutral-600">
+        {children}
+      </div>
+    </section>
+  );
+}
+```
+A reusable component: this one shape gets reused across all four of the site's legal pages, each one just passes in its own `title` and content as `children`, instead of me copy-pasting the same heading and spacing markup onto every single page by hand.
+
+## Coordination
+
+**What I did:**
+Rather than having the app talk directly to the outside service that issues gift cards, I built a separate small backend service in between, acting as a coordinator. The app talks to this coordinator, and the coordinator is the only part of the whole system that actually talks to the real outside API.
+
+**Why it matters:**
+This meant sensitive information, like the private key needed to authenticate with that outside API, never has to exist inside the app itself, which could end up on anyone's computer. It also meant I could put real safety limits in one central place, like a hard cap on how much a single payment is allowed to be for, enforced before a request is even sent to the real service, rather than trusting every part of the app to individually enforce that correctly.
+
+**Example:**
+When the app wants to create a payment, it sends a simple request to the coordinator with just the amount and which store it's for. The coordinator is the one that actually knows the real pricing, builds the real request to the outside API, and checks it against the spending limit, the app itself never sees or handles any of those sensitive details directly.
+
+**Evidence:**
+This separation is visible directly in the project's folder structure, the coordinator is its own separate piece of code with its own environment file holding the real credentials, completely separate from the app the user actually runs on their computer.
+
+**Code, `coordinator/server.js`:**
+```js
+const MAX_SPEND_USD = Number(process.env.MAX_SPEND_USD || 20);
+
+if (Number(amountFiat) > MAX_SPEND_USD) {
+  return res.status(400).json({
+    error: `amountFiat exceeds the configured spend cap (${MAX_SPEND_USD}).`,
+  });
+}
+```
+This is the actual safety limit, enforced in exactly one place. Because every payment has to go through this coordinator, I only ever had to write this check once for it to apply everywhere, instead of needing to trust every other part of the app to separately remember to check it too.
+
+## Things I have done that have personal value
+
+**What happened:**
+Beyond just completing the assignment, this project became something I actually cared about getting right, to the point of treating it like a real product rather than a school exercise. I made a deliberate decision partway through to stop treating any part of it as a simulation or a placeholder, since it genuinely does move real money, and that changed how carefully I approached every decision after that.
+
+**Why it had personal value:**
+Building something that actually works, end to end, with real consequences if it's wrong, taught me a kind of carefulness I don't think a purely hypothetical project would have. Catching my own incorrect assumptions before they became real problems, rather than after, was genuinely satisfying in a way that's hard to get from a project where nothing real is actually at stake.
+
+**Example:**
+A specific moment that stuck with me was realising a planned approach wouldn't actually work before building any code around it, and having to go find a better one, rather than finding out the hard way after already committing to it. Being willing to change direction when the evidence said I was wrong, instead of pushing forward anyway, is something I'm genuinely proud of about how I approached this.
+
+**Evidence:**
+The project's own build log records these moments honestly as they happened, including the times something didn't work and had to be rethought, not just the parts that went smoothly. That record is itself something I value, since it's an accurate picture of how the project actually came together, not a cleaned-up version after the fact.
+
+**Code, `desktop/inject/checkout.js`:**
+```js
+// No auto-submit either way, same reasoning as the extension: real money
+// was just spent, final submission stays a manual, visible click.
+function fillRedemption(target, redemption) {
+```
+This one comment is the clearest example of that carefulness to me. It would've been easy to make the form submit itself automatically once a payment succeeded, it's a small convenience. I deliberately didn't, specifically because real money had just moved, and the very last step should always stay something the person can see and consciously choose to do themselves.

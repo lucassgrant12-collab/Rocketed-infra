@@ -53,9 +53,45 @@ app.use((req, res, next) => {
   next();
 });
 
+
+// Minimal in-memory per-IP rate limiter for the two endpoints that call
+// Bitrefill with the real API key. Once this is deployed publicly, anyone
+// could otherwise hammer it and get that key rate-limited or flagged, which
+// would break the whole integration for everyone. Not a substitute for real
+// abuse protection, just enough to stop casual spam. "trust proxy" makes
+// req.ip the real client behind Railway's proxy instead of the proxy itself.
+app.set("trust proxy", 1);
+
+function rateLimit({ windowMs, max }) {
+  const hits = new Map();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of hits) if (entry.reset <= now) hits.delete(key);
+  }, windowMs).unref();
+
+  return (req, res, next) => {
+    const now = Date.now();
+    let entry = hits.get(req.ip);
+    if (!entry || entry.reset <= now) {
+      entry = { count: 0, reset: now + windowMs };
+      hits.set(req.ip, entry);
+    }
+    entry.count++;
+    if (entry.count > max) {
+      res.setHeader("Retry-After", Math.ceil((entry.reset - now) / 1000));
+      return res.status(429).json({ error: "Too many requests, try again in a minute." });
+    }
+    next();
+  };
+}
+
+const paymentLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
+
 const BITREFILL_BASE_URL = "https://api.bitrefill.com";
 const BITREFILL_API_KEY = process.env.BITREFILL_API_KEY;
-const MAX_SPEND_USD = Number(process.env.MAX_SPEND_USD || 20);
+// Optional extra safety cap. Unset means no Atlus-side cap: each store's own
+// limits (from Bitrefill) still apply.
+const MAX_SPEND_USD = Number(process.env.MAX_SPEND_USD) || Infinity;
 
 if (!BITREFILL_API_KEY) {
   console.warn(
@@ -133,7 +169,12 @@ function selectPackage(packages, amountFiat) {
 // ---------------------------------------------------------------------
 
 app.get("/api/atlus/retailers", (req, res) => {
-  res.json({ retailers: RETAILERS });
+  res.json({
+    retailers: RETAILERS.map((r) => ({
+      ...r,
+      max: r.max != null ? Math.min(r.max, MAX_SPEND_USD) : undefined, // clamp only if a cap is set
+    })),
+  });
 });
 
 app.get("/api/atlus/match", (req, res) => {
@@ -146,7 +187,7 @@ app.get("/api/atlus/match", (req, res) => {
 // Atlus's own payment endpoints.
 // ---------------------------------------------------------------------
 
-app.post("/api/atlus/create-payment", async (req, res) => {
+app.post("/api/atlus/create-payment", paymentLimiter, async (req, res) => {
   const { amountFiat, productId } = req.body ?? {};
 
   if (!amountFiat || Number(amountFiat) <= 0) {
@@ -221,7 +262,7 @@ app.post("/api/atlus/create-payment", async (req, res) => {
   }
 });
 
-app.post("/api/atlus/poll-until-paid", async (req, res) => {
+app.post("/api/atlus/poll-until-paid", paymentLimiter, async (req, res) => {
   const { invoiceId } = req.body ?? {};
   if (!invoiceId) return res.status(400).json({ error: "invoiceId is required" });
 
@@ -300,5 +341,5 @@ function parseRedemption(text) {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Atlus Pay coordinator (real Bitrefill) listening on http://localhost:${PORT}`);
-  console.log(`Spend cap: $${MAX_SPEND_USD} per invoice.`);
+  console.log(MAX_SPEND_USD === Infinity ? "No Atlus spend cap (store limits apply)." : `Spend cap: ${MAX_SPEND_USD} per invoice.`);
 });

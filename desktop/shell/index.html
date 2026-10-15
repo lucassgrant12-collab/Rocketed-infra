@@ -2,64 +2,133 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Atlus Pay</title>
+    <title>Atlus</title>
     <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 44px; overflow: hidden; }
       body {
-        margin: 0;
-        height: 44px;
+        background: #1e1f22;
+        color: #b5bac1;
+        font-family: "gg sans", "Noto Sans", "Segoe UI", system-ui, sans-serif;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        /* Right padding keeps clear of the native window controls drawn
+           over this strip (titleBarOverlay in main.js). */
+        padding: 0 150px 0 10px;
+        user-select: none;
+        -webkit-app-region: drag;
+      }
+      button, .brand, .site { -webkit-app-region: no-drag; }
+
+      .brand {
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 0 8px;
-        background: #171717;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        box-sizing: border-box;
-      }
-      button {
-        border: none;
-        background: #2a2a2a;
-        color: #fff;
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
-        cursor: pointer;
+        padding: 0 10px 0 4px;
+        height: 30px;
+        border-radius: 4px;
+        color: #f2f3f5;
         font-size: 14px;
-      }
-      button:hover {
-        background: #3a3a3a;
-      }
-      #site {
-        flex: 1;
-        font-size: 13px;
-        color: #d4d4d4;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      #brand {
-        color: #fff;
-        font-size: 12px;
         font-weight: 700;
-        padding: 0 4px;
-        white-space: nowrap;
+        letter-spacing: -0.01em;
         cursor: pointer;
       }
-      #home-btn {
-        width: auto;
-        padding: 0 10px;
+      .brand:hover { background: #35373c; }
+      .mark {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background: #f2f3f5;
+        color: #1e1f22;
         font-size: 13px;
-        font-weight: 600;
+        font-weight: 800;
+        display: grid;
+        place-items: center;
       }
+
+      .icon-btn {
+        width: 30px;
+        height: 30px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: #b5bac1;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        padding: 0;
+      }
+      .icon-btn:hover { background: #35373c; color: #dbdee1; }
+      .icon-btn:focus-visible { outline: 2px solid #4f8df7; outline-offset: -2px; }
+      svg {
+        width: 18px;
+        height: 18px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .divider { width: 1px; height: 18px; background: #3f4147; margin: 0 8px; }
+
+      .site {
+        flex: 1;
+        min-width: 0;
+        max-width: 480px;
+        height: 28px;
+        margin-left: 4px;
+        padding: 0 10px;
+        background: #111214;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #949ba4;
+      }
+      .site svg { width: 13px; height: 13px; flex-shrink: 0; }
+      #site-text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+      .spacer { flex: 1; }
     </style>
   </head>
   <body>
-    <span id="brand" title="Back to Atlus">Atlus</span>
-    <button id="back-btn" title="Back">&#8592;</button>
-    <button id="forward-btn" title="Forward">&#8594;</button>
-    <button id="reload-btn" title="Reload">&#8635;</button>
-    <button id="home-btn" title="Back to Atlus">Home</button>
-    <span id="site"></span>
-    <button id="settings-btn" title="Settings">&#9881;</button>
+    <div class="brand" id="brand" title="Back to the store directory">
+      <span class="mark">A</span>
+      <span>Atlus</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <button class="icon-btn" id="back-btn" title="Back" aria-label="Back">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" /></svg>
+    </button>
+    <button class="icon-btn" id="forward-btn" title="Forward" aria-label="Forward">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" /></svg>
+    </button>
+    <button class="icon-btn" id="reload-btn" title="Reload" aria-label="Reload">
+      <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 4v5h-5" /></svg>
+    </button>
+    <button class="icon-btn" id="home-btn" title="Store directory" aria-label="Store directory">
+      <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
+    </button>
+
+    <div class="site">
+      <svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+      <span id="site-text">Store directory</span>
+    </div>
+
+    <div class="spacer"></div>
+
+    <button class="icon-btn" id="settings-btn" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>
+    </button>
+
     <script src="shell.js"></script>
   </body>
 </html>

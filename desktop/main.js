@@ -29,6 +29,7 @@ const { app, BrowserWindow, BrowserView, ipcMain } = require("electron");
 const path = require("path");
 const { getWalletConnectClient } = require("./walletconnect");
 const { readSettings, writeSettings } = require("./settings");
+const config = require("./config");
 
 const SHELL_HEIGHT = 44;
 const BASE_CHAIN = "eip155:8453";
@@ -41,6 +42,16 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    minWidth: 900,
+    minHeight: 600,
+    title: "Atlus",
+    backgroundColor: "#1e1f22",
+    autoHideMenuBar: true,
+    // The shell strip (shell/index.html) doubles as the title bar, with
+    // the native window controls drawn over its right edge, instead of a
+    // separate OS title bar sitting above it.
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#1e1f22", symbolColor: "#b5bac1", height: SHELL_HEIGHT },
     webPreferences: {
       preload: path.join(__dirname, "shell", "shell-preload.js"),
       contextIsolation: true,
@@ -69,6 +80,7 @@ function createWindow() {
     },
   });
 
+  browserView.setBackgroundColor("#313338");
   mainWindow.setBrowserView(browserView);
   layoutBrowserView();
   goHome();
@@ -117,7 +129,9 @@ ipcMain.handle("shell:home", () => {
 });
 
 function goHome() {
-  browserView.webContents.loadFile(path.join(__dirname, "home", "index.html"));
+  browserView.webContents.loadFile(path.join(__dirname, "home", "index.html"), {
+    query: { coordinator: config.coordinatorUrl },
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -134,8 +148,10 @@ ipcMain.handle("shell:openSettings", () => {
     return;
   }
   settingsWindow = new BrowserWindow({
-    width: 420,
-    height: 640,
+    width: 540,
+    height: 720,
+    title: "Atlus settings",
+    backgroundColor: "#313338",
     parent: mainWindow,
     webPreferences: {
       preload: path.join(__dirname, "shell", "settings-preload.js"),

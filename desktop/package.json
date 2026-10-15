@@ -23,6 +23,7 @@
       "output": "dist"
     },
     "files": [
+      "config.js",
       "main.js",
       "settings.js",
       "walletconnect.js",
@@ -31,7 +32,9 @@
       "shell/**/*"
     ],
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "nsis": {
       "oneClick": false,

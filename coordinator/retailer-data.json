@@ -1,0 +1,257 @@
+{
+  "starbucks-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 500
+  },
+  "uber-eats-usa": {
+    "currency": "USD",
+    "logoBackground": "#3FC165",
+    "max": 500
+  },
+  "doordash-usa": {
+    "currency": "USD",
+    "logoBackground": "#F44322",
+    "max": 200
+  },
+  "chipotle-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 250
+  },
+  "dunkin-donuts-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 100
+  },
+  "subway-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 250
+  },
+  "burger-king-usa": {
+    "currency": "USD",
+    "logoBackground": "#faddb8",
+    "max": 1000
+  },
+  "panera-bread-usa": {
+    "currency": "USD",
+    "logoBackground": "#677633",
+    "max": 200
+  },
+  "dan-murphy_s-australia": {
+    "currency": "AUD",
+    "logoBackground": "#FFFFFF",
+    "max": 1000
+  },
+  "deliveroo-uk": {
+    "currency": "GBP",
+    "logoBackground": "#00CBBB",
+    "max": 150
+  },
+  "tim-hortons-canada": {
+    "currency": "CAD",
+    "logoBackground": "#C8102E",
+    "max": 100
+  },
+  "target-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 2000
+  },
+  "kohl_s-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 500
+  },
+  "jc-penney-usa": {
+    "currency": "USD",
+    "logoBackground": "#ec1c24",
+    "max": 500
+  },
+  "woolworths-supermarket-australia": {
+    "currency": "AUD",
+    "logoBackground": "#FFFFFF",
+    "max": 1000
+  },
+  "coles-australia": {
+    "currency": "AUD",
+    "logoBackground": "#E11922",
+    "max": 500
+  },
+  "myer-australia": {
+    "currency": "AUD",
+    "logoBackground": "#FFFFFF",
+    "max": 100
+  },
+  "bunnings-australia": {
+    "currency": "AUD",
+    "logoBackground": "#FFFFFF",
+    "max": 250
+  },
+  "officeworks-australia": {
+    "currency": "AUD",
+    "logoBackground": "#FFFFFF",
+    "max": 500
+  },
+  "david-jones-australia": {
+    "currency": "AUD",
+    "logoBackground": "#FFFFFF",
+    "max": 1000
+  },
+  "big-w-au": {
+    "currency": "AUD",
+    "logoBackground": "#FFFFFF",
+    "max": 500
+  },
+  "amart-furniture-australia": {
+    "currency": "AUD",
+    "logoBackground": "#FFFFFF",
+    "max": 1000
+  },
+  "tesco-uk": {
+    "currency": "GBP",
+    "logoBackground": "#FFFFFF",
+    "max": 300
+  },
+  "asda-uk": {
+    "currency": "GBP",
+    "logoBackground": "#79BE21",
+    "max": 1000
+  },
+  "argos-uk": {
+    "currency": "GBP",
+    "logoBackground": "#ee3324",
+    "max": 500
+  },
+  "best-buy-usa": {
+    "currency": "USD",
+    "logoBackground": "#0038b5",
+    "max": 250
+  },
+  "gamestop-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 500
+  },
+  "jbhifi-australia": {
+    "currency": "AUD",
+    "logoBackground": "#FFEC0F",
+    "max": 1000
+  },
+  "sephora-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 250
+  },
+  "ulta-beauty-usa": {
+    "currency": "USD",
+    "logoBackground": "#ff741f",
+    "max": 500
+  },
+  "nike-usa": {
+    "currency": "USD",
+    "logoBackground": "#000000",
+    "max": 250
+  },
+  "adidas-usa": {
+    "currency": "USD",
+    "logoBackground": "#000000",
+    "max": 500
+  },
+  "asos-uk": {
+    "currency": "GBP",
+    "logoBackground": "#FFFFFF",
+    "max": 250
+  },
+  "rebel-australia": {
+    "currency": "AUD",
+    "logoBackground": "#ffe102",
+    "max": 1000
+  },
+  "cvs-pharmacy-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 500
+  },
+  "walgreens-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 500
+  },
+  "chemist-warehouse-australia": {
+    "currency": "AUD",
+    "logoBackground": "#FFFFFF",
+    "max": 400
+  },
+  "boots-uk": {
+    "currency": "GBP",
+    "logoBackground": "#FFFFFF",
+    "max": 500
+  },
+  "airbnb-usa": {
+    "currency": "USD",
+    "logoBackground": "#FF375C",
+    "max": 500
+  },
+  "delta-air-lines-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 1000
+  },
+  "southwest-airlines-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 500
+  },
+  "hotels_com-usa": {
+    "currency": "USD",
+    "logoBackground": "#191E3B",
+    "max": 500
+  },
+  "webjet-au": {
+    "currency": "AUD",
+    "logoBackground": "#FFFFFF",
+    "max": 500
+  },
+  "netflix-usa": {
+    "currency": "USD",
+    "logoBackground": "#000000",
+    "max": 60
+  },
+  "regal-cinemas-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 100
+  },
+  "amc-theatres-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 200
+  },
+  "xbox-live-usa": {
+    "currency": "USD",
+    "logoBackground": "#0F7C10",
+    "max": 100
+  },
+  "sony-playstation-usa": {
+    "currency": "USD",
+    "logoBackground": "#00439c",
+    "max": 250
+  },
+  "nintendo-usa": {
+    "currency": "USD",
+    "logoBackground": "#E70012",
+    "max": 50
+  },
+  "roblox-usa": {
+    "currency": "USD",
+    "logoBackground": "#000018",
+    "max": 500
+  },
+  "google-play-usa": {
+    "currency": "USD",
+    "logoBackground": "#FFFFFF",
+    "max": 200
+  }
+}

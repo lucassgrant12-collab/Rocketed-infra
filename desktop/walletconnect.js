@@ -7,6 +7,7 @@
 const { app } = require("electron");
 const path = require("path");
 const { SignClient } = require("@walletconnect/sign-client");
+const config = require("./config");
 
 const WALLETCONNECT_PROJECT_ID =
   process.env.WALLETCONNECT_PROJECT_ID || "2bc360f0c421943267027c4213c6c2c8";
@@ -35,7 +36,7 @@ function getWalletConnectClient() {
       metadata: {
         name: "Atlus Pay",
         description: "Pay for anything online with crypto",
-        url: "http://localhost:3000",
+        url: config.websiteUrl,
         icons: [],
       },
     });

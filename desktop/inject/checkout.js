@@ -26,11 +26,22 @@
 // with no contextBridge indirection needed, that indirection was a
 // Chrome-extension-specific requirement this file doesn't have.
 
-const { ipcRenderer } = require("electron");
+const { ipcRenderer, contextBridge } = require("electron");
 const QRCode = require("qrcode");
 
-const COORDINATOR_URL = "http://localhost:3001";
-const WEBSITE_URL = "http://localhost:3000";
+// Atlus's own home screen (a local file:// page) shows a wallet panel and
+// a settings shortcut, but it's a normal sandboxed page with no Node
+// access, so it gets exactly these two calls and nothing else. Never
+// exposed on a retailer's site, only on file: pages, which a website can't
+// serve.
+if (window.location.protocol === "file:") {
+  contextBridge.exposeInMainWorld("atlusHome", {
+    walletStatus: () => ipcRenderer.invoke("wallet:status"),
+    openSettings: () => ipcRenderer.invoke("shell:openSettings"),
+  });
+}
+
+const { coordinatorUrl: COORDINATOR_URL, websiteUrl: WEBSITE_URL } = require("../config");
 const BASE_RPC_URL = "https://mainnet.base.org"; // Base's official public RPC
 
 // Most retailers in retailers.js issue their own store gift card, not a
@@ -225,14 +236,14 @@ function injectButton(anchorField) {
   button.style.cssText = [
     "display:block",
     "margin:8px 0",
-    "padding:10px 16px",
-    "background:#171717",
+    "padding:9px 16px",
+    "background:#4f8df7",
     "color:#fff",
-    "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    "font-family:'Segoe UI',system-ui,sans-serif",
     "font-size:14px",
     "font-weight:600",
-    "border:none",
-    "border-radius:8px",
+    "border:0",
+    "border-radius:4px",
     "cursor:pointer",
   ].join(";");
   button.addEventListener("click", onPayClick);
@@ -392,52 +403,196 @@ function requestFromServer(url, body) {
 // The full-page overlay
 // ---------------------------------------------------------------------
 
+// The overlay lives in a shadow root so the merchant page's own CSS can't
+// restyle it (a site-wide `button { ... }` rule would otherwise change it)
+// and its styles can't leak back out onto the merchant's page either.
+const OVERLAY_CSS = `
+  :host { all: initial; }
+  * { box-sizing: border-box; }
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "gg sans", "Noto Sans", "Segoe UI", system-ui, sans-serif;
+    color: #dbdee1;
+  }
+  .modal {
+    width: 440px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    display: flex;
+    flex-direction: column;
+    background: #313338;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px #1e1f22;
+  }
+  .body { padding: 20px 20px 4px; overflow-y: auto; }
+  h2 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #b5bac1;
+  }
+  .amount {
+    margin: 6px 0 2px;
+    font-size: 32px;
+    font-weight: 700;
+    color: #f2f3f5;
+    font-variant-numeric: tabular-nums;
+  }
+  .meta { margin-bottom: 16px; font-size: 14px; color: #949ba4; }
+  .qr {
+    display: none;
+    width: fit-content;
+    margin: 0 auto 16px;
+    padding: 12px;
+    background: #fff;
+    border-radius: 8px;
+  }
+  .qr canvas { display: block; }
+  .note { margin-bottom: 14px; font-size: 14px; line-height: 1.4; color: #b5bac1; }
+  .code {
+    display: none;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    background: #1e1f22;
+    border-radius: 4px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 14px;
+    color: #f2f3f5;
+    word-break: break-all;
+    user-select: all;
+  }
+  .notice {
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    background: #2b2d31;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #949ba4;
+  }
+  .status { min-height: 20px; margin-bottom: 14px; font-size: 14px; color: #b5bac1; }
+  .status.error { color: #f23f42; }
+  .status.success { color: #23a559; }
+  .footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 20px;
+    background: #2b2d31;
+  }
+  .btn {
+    height: 32px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 3px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .btn.link { background: transparent; color: #dbdee1; }
+  .btn.link:hover:not(:disabled) { text-decoration: underline; }
+  .btn.primary { background: #4f8df7; color: #fff; }
+  .btn.primary:hover:not(:disabled) { background: #3f7be0; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+`;
+
+// Pass null for a plain message (no amount, no payment controls), see
+// showMessage(). Returns the element inside the shadow root that holds
+// everything, so querySelector(...) on the result works the same as it did
+// before the overlay moved into a shadow root.
 function buildOverlay(amountUsd) {
-  const overlay = document.createElement("div");
-  overlay.id = "atlus-overlay";
-  overlay.style.cssText =
-    "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
-  overlay.innerHTML = `
-    <div id="atlus-overlay-modal" style="width:360px;max-width:calc(100vw - 32px);background:#fff;border-radius:16px;padding:28px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-      <h2 style="margin:0 0 4px;font-size:16px;font-weight:700;color:#171717;">Pay with Atlus</h2>
-      <div id="atlus-overlay-amount" style="margin:12px 0 4px;font-size:30px;font-weight:700;color:#171717;">$${amountUsd}</div>
-      <p style="margin:0 0 20px;font-size:13px;color:#737373;">Paying with USDC (Base)</p>
-      <div id="atlus-overlay-qr" style="display:none;margin:0 auto 16px;"></div>
-      <div id="atlus-overlay-warning" style="margin:0 0 16px;padding:10px 12px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;line-height:1.4;text-align:left;">
-        This sends real USDC from your connected wallet to purchase a real prepaid card. Confirm the exact amount shown in your wallet app before approving.
+  const host = document.createElement("div");
+  host.id = "atlus-overlay";
+  const shadow = host.attachShadow({ mode: "open" });
+
+  const withAmount = amountUsd !== null;
+  shadow.innerHTML = `
+    <style>${OVERLAY_CSS}</style>
+    <div class="scrim">
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Pay with Atlus">
+        <div class="body">
+          <h2>Pay with Atlus</h2>
+          ${
+            withAmount
+              ? `<div class="amount" id="atlus-overlay-amount">$${amountUsd}</div>
+                 <div class="meta">Paying with USDC on Base</div>`
+              : `<div style="height:12px"></div>`
+          }
+          <div class="qr" id="atlus-overlay-qr"></div>
+          <div class="note" id="atlus-overlay-balance">${withAmount ? "Scan the QR code with a WalletConnect-compatible wallet." : ""}</div>
+          <div class="code" id="atlus-overlay-code"></div>
+          ${
+            withAmount
+              ? `<div class="notice" id="atlus-overlay-warning">This sends real USDC from your wallet to buy a real gift card. Check the exact amount in your wallet app before you approve.</div>`
+              : ""
+          }
+          <div class="status" id="atlus-overlay-status"></div>
+        </div>
+        <div class="footer">
+          <button type="button" class="btn link" id="atlus-overlay-cancel-btn">Cancel</button>
+          <button type="button" class="btn primary" id="atlus-overlay-confirm-btn" disabled>Confirm payment</button>
+        </div>
       </div>
-      <div id="atlus-overlay-balance" style="margin:0 0 16px;font-size:13px;color:#525252;">Scan the QR code with a WalletConnect-compatible wallet...</div>
-      <div id="atlus-overlay-code" style="display:none;margin:0 0 16px;padding:10px 12px;border-radius:8px;background:#f5f5f5;font-family:monospace;font-size:13px;word-break:break-all;text-align:left;"></div>
-      <div style="display:flex;gap:8px;">
-        <button type="button" id="atlus-overlay-cancel-btn" style="flex:1;padding:11px;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;background:#f5f5f5;color:#171717;">Cancel</button>
-        <button type="button" id="atlus-overlay-confirm-btn" disabled style="flex:1;padding:11px;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;background:#171717;color:#fff;opacity:0.5;">Confirm Payment</button>
-      </div>
-      <div id="atlus-overlay-status" style="margin-top:16px;min-height:18px;font-size:13px;color:#525252;"></div>
     </div>
   `;
-  document.body.appendChild(overlay);
-  return overlay;
+  document.body.appendChild(host);
+  return shadow.querySelector(".scrim");
+}
+
+function showMessage(text) {
+  const overlay = buildOverlay(null);
+  overlay.querySelector("#atlus-overlay-balance").textContent = text;
+  overlay.querySelector("#atlus-overlay-confirm-btn").remove();
+  const closeBtn = overlay.querySelector("#atlus-overlay-cancel-btn");
+  closeBtn.textContent = "Close";
+  closeBtn.addEventListener("click", () => removeOverlay(overlay));
+}
+
+// For the checks that stop a payment before a wallet is ever involved: drop
+// everything that implies money is about to move (amount, the real-money
+// notice, the confirm button) and just say why, with a Close button.
+function blockOverlay(overlay, text, detail) {
+  for (const sel of [".amount", ".meta", "#atlus-overlay-warning", "#atlus-overlay-confirm-btn"]) {
+    overlay.querySelector(sel)?.remove();
+  }
+  overlay.querySelector("#atlus-overlay-balance").textContent = text;
+  if (detail) setStatus(overlay, detail, "error");
+  else setStatus(overlay, "");
+  overlay.querySelector("#atlus-overlay-cancel-btn").textContent = "Close";
 }
 
 function setStatus(overlay, text, kind) {
   const el = overlay.querySelector("#atlus-overlay-status");
   el.textContent = text || "";
-  el.style.color = kind === "error" ? "#dc2626" : kind === "success" ? "#16a34a" : "#525252";
+  el.className = kind ? `status ${kind}` : "status";
 }
 
 function removeOverlay(overlay) {
-  overlay.remove();
+  const root = overlay.getRootNode();
+  (root.host || overlay).remove();
 }
 
 async function onPayClick() {
   const amount = findTotal();
   if (!amount) {
-    alert("Atlus Pay could not detect the order total on this page.");
+    showMessage("Atlus couldn't find the order total on this page. Make sure you're on the final checkout step, then try again.");
     return;
   }
   const target = currentTarget;
   if (!target) {
-    alert("Atlus Pay could not find a card or gift-card field to fill on this page.");
+    showMessage("Atlus couldn't find a gift card or promo code field on this page, so it has nowhere to put the code.");
     return;
   }
 
@@ -458,26 +613,22 @@ async function onPayClick() {
   setStatus(overlay, "Checking this checkout...");
 
   if (detectDirectCryptoAcceptance()) {
-    balanceEl.textContent =
-      "This site looks like it already accepts crypto directly at checkout. Atlus doesn't need to buy a gift card here, look for a crypto payment option on this page.";
-    setStatus(overlay, "");
-    confirmBtn.remove();
+    blockOverlay(
+      overlay,
+      "This site looks like it already accepts crypto directly at checkout. Atlus doesn't need to buy a gift card here, look for a crypto payment option on this page."
+    );
     return;
   }
 
   const retailer = await matchRetailer();
   if (!retailer) {
-    balanceEl.textContent = `Atlus doesn't support ${window.location.hostname.replace(/^www\./, "")} yet.`;
-    setStatus(overlay, "");
-    confirmBtn.remove();
+    blockOverlay(overlay, `Atlus doesn't support ${window.location.hostname.replace(/^www\./, "")} yet.`);
     return;
   }
 
   const { compatible, reasons } = await checkMerchantCompatibility(target.type);
   if (!compatible) {
-    balanceEl.textContent = "This merchant may not accept the Atlus card.";
-    setStatus(overlay, reasons.join(" "), "error");
-    confirmBtn.remove();
+    blockOverlay(overlay, "This store may not accept the codes Atlus buys.", reasons.join(" "));
     return;
   }
   setStatus(overlay, "");
@@ -552,7 +703,7 @@ async function runPayment(overlay, amountUsd, account, target, productId) {
   }
 
   setStatus(overlay, "");
-  confirmBtn.textContent = "Send Payment";
+  confirmBtn.textContent = "Send payment";
   confirmBtn.disabled = false;
   cancelBtn.disabled = false;
 
